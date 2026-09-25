@@ -4,6 +4,7 @@ aggregate sender domains, map them to datenanfragen.de records. Then pull identi
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import subprocess
@@ -85,13 +86,26 @@ def discover(settings: Settings, store: DataStore, mailbox: str = "[Gmail]/All M
 
 
 # ---- facts ----------------------------------------------------------------------------------
+_TAG_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", re.DOTALL | re.IGNORECASE)
+
+
+def to_text(raw: str) -> str:
+    """Strip HTML tags/entities so regexes see prose. Good enough for transactional mail."""
+    txt = _TAG_RE.sub(" ", raw)
+    txt = html.unescape(txt)
+    txt = re.sub(r"[ \t\xa0]+", " ", txt)
+    return re.sub(r"\n\s*\n+", "\n", txt)
+
+
 _NUMBER_LABELS = (
+    r"Buchungsnummer", r"Booking (?:Number|Reference)", r"Auftragsnummer", r"Bestellnummer",
+    r"Rechnungsnummer", r"Order (?:Number|ID)",
     r"Kundennummer", r"Kunden-?Nr\.?", r"Kundenkonto", r"BahnCard-?(?:Nummer|Nr\.?)",
     r"Vertragsnummer", r"Vertrags-?Nr\.?", r"Mitgliedsnummer", r"Kartennummer",
     r"Account(?:-| )?(?:ID|Nummer)", r"Customer (?:ID|number)", r"Konto-?Nr\.?",
 )
 _NUMBER_RE = re.compile(
-    r"(?P<label>" + "|".join(_NUMBER_LABELS) + r")\s*[:#]?\s*(?P<val>[A-Z0-9][A-Z0-9 \-/]{3,30}[A-Z0-9])",
+    r"(?P<label>" + "|".join(_NUMBER_LABELS) + r")\s*[:#]?\s*(?P<val>[A-Z0-9][A-Z0-9\-/]{3,25}(?: \d{3,4}){0,3})",
     re.IGNORECASE,
 )
 _ADDRESS_RE = re.compile(
@@ -116,10 +130,11 @@ def _read(settings: Settings, msg_id: str, mailbox: str) -> str:
     return res.stdout if res.returncode == 0 else ""
 
 
-def facts_for(settings: Settings, company: Company, own_name: str,
-              mailbox: str = "[Gmail]/All Mail", max_messages: int = 6) -> Facts:
-    f = Facts(slug=company.slug)
-    doms = {registrable(d) for d in company.domains}
+def facts_for(settings: Settings, company: Company | None, own_name: str,
+              mailbox: str = "[Gmail]/All Mail", max_messages: int = 6,
+              domains: tuple[str, ...] = ()) -> Facts:
+    f = Facts(slug=company.slug if company else (domains[0] if domains else "?"))
+    doms = {registrable(d) for d in (company.domains if company else domains)}
     envs: list[dict] = []
     for d in doms:
         res = subprocess.run(
@@ -134,7 +149,7 @@ def facts_for(settings: Settings, company: Company, own_name: str,
         for to in env.get("to") or []:
             if to.get("email"):
                 f.account_emails.add(to["email"].lower())
-        text = _read(settings, env["id"], mailbox)
+        text = to_text(_read(settings, env["id"], mailbox))
         if not text:
             continue
         f.messages_read += 1

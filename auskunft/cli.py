@@ -313,17 +313,19 @@ def discover(
 
 @app.command()
 def facts(
-    slug: str = typer.Argument(..., help="Company slug"),
+    slug: str = typer.Argument(..., help="Company slug, or a sender domain with --domain"),
     mailbox: str = typer.Option("[Gmail]/All Mail", "--mailbox"),
     max_messages: int = typer.Option(6, "--max"),
+    by_domain: bool = typer.Option(False, "--domain", help="Treat SLUG as a sender domain"),
 ) -> None:
     """Extract identification facts (customer numbers, address) from mails of that company."""
     from auskunft.discover import facts_for
 
     settings = load_settings()
-    company = _store().company(slug)
-    f = facts_for(settings, company, settings.from_name, mailbox=mailbox, max_messages=max_messages)
-    console.print(f"[bold]{company.name}[/bold]  read {f.messages_read} mails")
+    company = None if by_domain else _store().company(slug)
+    f = facts_for(settings, company, settings.from_name, mailbox=mailbox,
+                  max_messages=max_messages, domains=(slug,) if by_domain else ())
+    console.print(f"[bold]{company.name if company else slug}[/bold]  read {f.messages_read} mails")
     if f.account_emails:
         console.print("account e-mail(s): " + ", ".join(sorted(f.account_emails)))
     for label, vals in f.numbers.items():
