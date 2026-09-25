@@ -272,3 +272,63 @@ def send(
     led.log(r.id, "smtp:sent", {"message_id": msg_id, "to": letter.to_email})
     console.print(f"[green]sent[/green] #{r.id} {letter.to_name}  ref {letter.tracking_id}  "
                   f"due {due:%d.%m.%Y}  message-id {msg_id}")
+
+
+@app.command()
+def discover(
+    mailbox: str = typer.Option("[Gmail]/All Mail", "--mailbox"),
+    pages: int = typer.Option(8, "--pages", help="500 envelopes per page"),
+    known_only: bool = typer.Option(False, "--known-only", help="Only senders in datenanfragen.de"),
+    limit: int = typer.Option(60, "--limit"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Scan the mailbox and list the organisations you deal with, mapped to datenanfragen.de."""
+    from auskunft.discover import discover as _discover
+
+    settings = load_settings()
+    senders = _discover(settings, _store(), mailbox=mailbox, pages=pages,
+                        own_email=settings.from_email)
+    if known_only:
+        senders = [s for s in senders if s.company]
+    senders = senders[:limit]
+    if as_json:
+        console.print_json(json.dumps([
+            {"domain": s.domain, "count": s.count, "last": s.last[:10],
+             "slug": s.company.slug if s.company else None,
+             "name": s.company.name if s.company else sorted(s.names)[:1]}
+            for s in senders], ensure_ascii=False))
+        return
+    t = Table(title=f"Senders in {mailbox}")
+    for col in ("mails", "last", "domain", "datenanfragen.de match", "contact"):
+        t.add_column(col)
+    for s in senders:
+        c = s.company
+        t.add_row(str(s.count), s.last[:10], s.domain,
+                  f"{c.name} [dim]({c.slug})[/dim]" if c else "[dim]-[/dim]",
+                  (c.email or c.transport) if c else "")
+    console.print(t)
+    known = sum(1 for s in senders if s.company)
+    console.print(f"[dim]{len(senders)} senders shown, {known} matched to datenanfragen.de[/dim]")
+
+
+@app.command()
+def facts(
+    slug: str = typer.Argument(..., help="Company slug"),
+    mailbox: str = typer.Option("[Gmail]/All Mail", "--mailbox"),
+    max_messages: int = typer.Option(6, "--max"),
+) -> None:
+    """Extract identification facts (customer numbers, address) from mails of that company."""
+    from auskunft.discover import facts_for
+
+    settings = load_settings()
+    company = _store().company(slug)
+    f = facts_for(settings, company, settings.from_name, mailbox=mailbox, max_messages=max_messages)
+    console.print(f"[bold]{company.name}[/bold]  read {f.messages_read} mails")
+    if f.account_emails:
+        console.print("account e-mail(s): " + ", ".join(sorted(f.account_emails)))
+    for label, vals in f.numbers.items():
+        console.print(f"{label}: " + ", ".join(sorted(vals)))
+    for a in sorted(f.addresses):
+        console.print(f"address: {a}")
+    if not f.numbers and not f.addresses:
+        console.print("[dim]no customer numbers or addresses found in these mails[/dim]")
