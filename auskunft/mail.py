@@ -34,8 +34,9 @@ def send(letter: Letter, settings: Settings, approved: bool) -> str:
     if not approved:
         raise PermissionError("refusing to send: not approved by a human")
     msg = build_message(letter, settings)
+    # No --save: Gmail (and most providers) file sent mail themselves; a second copy is noise.
     res = subprocess.run(
-        himalaya_cmd(settings, "message", "send", "--save", "Sent"),
+        himalaya_cmd(settings, "message", "send"),
         input=msg.as_bytes(), capture_output=True, check=False,
     )
     if res.returncode != 0:

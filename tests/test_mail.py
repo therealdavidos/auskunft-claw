@@ -40,7 +40,7 @@ def test_send_pipes_raw_message_to_himalaya(monkeypatch):
 
     monkeypatch.setattr(mail.subprocess, "run", fake_run)
     mid = mail.send(LETTER, SETTINGS, approved=True)
-    assert seen["cmd"] == ["himalaya", "message", "send", "--save", "Sent"]
+    assert seen["cmd"] == ["himalaya", "message", "send"]
     assert b"Subject: Auskunft [Ref: AK-1]" in seen["input"]
     assert mid.startswith("<")
 
