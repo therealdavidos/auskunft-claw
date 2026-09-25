@@ -30,5 +30,8 @@ packages = ["auskunft"]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+ignore = ["B008", "DTZ011"]  # typer.Option defaults are the idiom; local dates are intended
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
