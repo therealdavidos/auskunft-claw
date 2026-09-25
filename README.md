@@ -9,16 +9,54 @@ Entry for the NVIDIA Berlin Claw Agent Challenge (Oct 2026). Built on OpenClaw /
 ## Status
 Day 1 (Sept 25): `lookup`, `draft`, `send` (approval-gated), `ls`, `add-synthetic`, deadline engine, ledger. See `docs/04-day1-plan.md`.
 
+## What is ours and what is OpenClaw's
+We write as little as possible. OpenClaw / NemoClaw provides the runtime, the local model, the scheduler
+(cron/heartbeat), memory, chat channels for approvals, and mail via the bundled **himalaya** skill.
+Our code is only the deterministic part no model should improvise:
+datenanfragen.de lookup, letter rendering, deadline arithmetic, the ledger/state machine,
+reply classification rules, and the data map. Everything is a CLI command; the OpenClaw skill wraps it.
+
 ## Quick start
 ```bash
 uv sync
-cp .env.example .env            # fill in your private mailbox, never a work address
+brew install himalaya            # mail transport (OpenClaw bundled skill)
+cp .env.example .env             # your name and address as the companies know you
 git clone --depth 1 https://github.com/datenanfragen/data vendor/datenanfragen
 uv run auskunft lookup deutsche-bahn
 uv run auskunft draft deutsche-bahn
-uv run auskunft send deutsche-bahn   # shows the mail, asks for approval, then sends
+uv run auskunft send deutsche-bahn   # shows the mail, asks for approval, sends via himalaya
 uv run auskunft ls                   # ledger with running clocks
 ```
+
+## himalaya setup (Gmail, app password, macOS Keychain)
+Store the 16-character app password in the Keychain once:
+```bash
+security add-generic-password -a "deine.adresse@gmail.com" -s himalaya-gmail -w
+```
+Then `~/.config/himalaya/config.toml`:
+```toml
+[accounts.gmail]
+email = "deine.adresse@gmail.com"
+display-name = "Vorname Nachname"
+default = true
+
+backend.type = "imap"
+backend.host = "imap.gmail.com"
+backend.port = 993
+backend.encryption.type = "tls"
+backend.login = "deine.adresse@gmail.com"
+backend.auth.type = "password"
+backend.auth.cmd = "security find-generic-password -a deine.adresse@gmail.com -s himalaya-gmail -w"
+
+message.send.backend.type = "smtp"
+message.send.backend.host = "smtp.gmail.com"
+message.send.backend.port = 465
+message.send.backend.encryption.type = "tls"
+message.send.backend.login = "deine.adresse@gmail.com"
+message.send.backend.auth.type = "password"
+message.send.backend.auth.cmd = "security find-generic-password -a deine.adresse@gmail.com -s himalaya-gmail -w"
+```
+Check: `himalaya account check` then `himalaya envelope list`.
 
 ## Principles
 - Nothing is sent without a human typing `send`.
@@ -29,7 +67,7 @@ uv run auskunft ls                   # ledger with running clocks
 
 ## Layout
 ```
-auskunft/      package (cli, data loader, renderer, deadline math, ledger, mailer)
+auskunft/      package (cli, data loader, renderer, deadline math, ledger, himalaya bridge)
 tests/         pytest
 docs/          decision record, sketch, feasibility, day plans
 vendor/        datenanfragen.de data clone (gitignored)

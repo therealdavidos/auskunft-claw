@@ -1,4 +1,8 @@
-"""Configuration from .env / environment. Secrets never leave this process."""
+"""Configuration from .env / environment.
+
+Mail transport is NOT configured here: sending and reading mail goes through the `himalaya` CLI,
+which OpenClaw ships as a bundled skill. Its account lives in ~/.config/himalaya/config.toml.
+"""
 
 from __future__ import annotations
 
@@ -15,14 +19,9 @@ load_dotenv()
 class Settings:
     from_name: str
     from_email: str
-    smtp_host: str
-    smtp_port: int
-    smtp_user: str
-    smtp_password: str
-    imap_host: str
-    imap_port: int
     postal_address: str
     birthdate: str
+    himalaya_account: str  # "" = himalaya default account
     data_dir: Path
     vendor_dir: Path
 
@@ -39,14 +38,9 @@ def load_settings() -> Settings:
     return Settings(
         from_name=_env("AUSKUNFT_FROM_NAME"),
         from_email=_env("AUSKUNFT_FROM_EMAIL"),
-        smtp_host=_env("AUSKUNFT_SMTP_HOST"),
-        smtp_port=int(_env("AUSKUNFT_SMTP_PORT", "465")),
-        smtp_user=_env("AUSKUNFT_SMTP_USER"),
-        smtp_password=_env("AUSKUNFT_SMTP_PASSWORD"),
-        imap_host=_env("AUSKUNFT_IMAP_HOST"),
-        imap_port=int(_env("AUSKUNFT_IMAP_PORT", "993")),
         postal_address=_env("AUSKUNFT_POSTAL_ADDRESS"),
         birthdate=_env("AUSKUNFT_BIRTHDATE"),
+        himalaya_account=_env("AUSKUNFT_HIMALAYA_ACCOUNT"),
         data_dir=Path(_env("AUSKUNFT_DATA_DIR", "data")),
         vendor_dir=Path(_env("AUSKUNFT_VENDOR_DIR", "vendor/datenanfragen")),
     )

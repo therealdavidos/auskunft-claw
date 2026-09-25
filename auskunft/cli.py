@@ -222,11 +222,11 @@ def send(
     slug: str = typer.Argument(..., help="Company slug; uses drafts/<slug>.txt from `draft`"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show everything, send nothing"),
 ) -> None:
-    """Send a drafted request. Shows the full mail and requires you to type `send`."""
+    """Send a drafted request via himalaya. Shows the full mail and requires you to type `send`."""
     from datetime import date
     from pathlib import Path
 
-    from auskunft import mailer
+    from auskunft import mail
     from auskunft.deadline import due_date
     from auskunft.render import Letter
 
@@ -263,7 +263,7 @@ def send(
         console.print("[yellow]aborted, nothing sent[/yellow]")
         raise typer.Exit(code=0)
     try:
-        msg_id = mailer.send(letter, settings, approved=True)
+        msg_id = mail.send(letter, settings, approved=True)
     except Exception as e:  # noqa: BLE001 - surface any SMTP failure verbatim, nothing is logged
         console.print(f"[red]send failed:[/red] {e}")
         raise typer.Exit(code=1) from None
