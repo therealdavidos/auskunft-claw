@@ -144,3 +144,131 @@ def draft(
         console.rule()
         console.print(letter.body, markup=False, highlight=False)
         console.rule()
+
+
+def _ledger():
+    from auskunft.ledger import Ledger
+
+    return Ledger(load_settings().ledger_path)
+
+
+@app.command("ls")
+def ls_cmd(
+    all_rows: bool = typer.Option(False, "--all", help="Include closed requests"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Show the ledger: every request with its state and days left on the clock."""
+    from datetime import date
+
+    from auskunft.deadline import days_left
+
+    led = _ledger()
+    rows = led.all(include_closed=all_rows)
+    if as_json:
+        console.print_json(json.dumps([r.__dict__ for r in rows], default=str, ensure_ascii=False))
+        return
+    t = Table(title=f"Auskunfts-Claw ledger  [dim]{date.today():%d.%m.%Y}[/dim]")
+    for col in ("id", "org", "state", "sent", "due", "days", "ref", ""):
+        t.add_column(col)
+    for r in rows:
+        due = r.effective_due
+        left = days_left(due) if due else None
+        if left is None:
+            days = "-"
+        elif left < 0:
+            days = f"[red]{left}[/red]"
+        elif left <= 7:
+            days = f"[yellow]{left}[/yellow]"
+        else:
+            days = str(left)
+        t.add_row(
+            str(r.id), r.org_name, r.state,
+            r.sent_at.strftime("%d.%m.") if r.sent_at else "-",
+            due.strftime("%d.%m.%Y") if due else "-",
+            days, r.tracking_id, "[dim]synthetic[/dim]" if r.synthetic else "",
+        )
+    console.print(t)
+    real = sum(1 for r in rows if not r.synthetic)
+    console.print(f"[dim]{len(rows)} requests, {real} real, {len(rows) - real} synthetic[/dim]")
+
+
+@app.command("add-synthetic")
+def add_synthetic(
+    slugs: list[str] = typer.Argument(..., help="Company slugs to add as synthetic (not sent)"),
+    sent_on: str = typer.Option(None, "--sent-on", help="ISO date to pretend the request was sent"),
+) -> None:
+    """Add ledger rows for demo/testing without sending anything."""
+    from datetime import date
+
+    from auskunft.deadline import due_date
+    from auskunft.render import new_tracking_id
+
+    store, led = _store(), _ledger()
+    day = date.fromisoformat(sent_on) if sent_on else date.today()
+    for slug in slugs:
+        try:
+            c = store.company(slug)
+        except KeyError:
+            console.print(f"[red]unknown slug {slug}, skipped[/red]")
+            continue
+        r = led.create(slug, c.name, c.email, new_tracking_id(slug, day), state="sent",
+                       sent_at=day, due_at=due_date(day), synthetic=True,
+                       notes="synthetic: nothing was sent")
+        console.print(f"added #{r.id} {c.name} due {r.due_at:%d.%m.%Y} [dim]{r.tracking_id}[/dim]")
+
+
+@app.command()
+def send(
+    slug: str = typer.Argument(..., help="Company slug; uses drafts/<slug>.txt from `draft`"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show everything, send nothing"),
+) -> None:
+    """Send a drafted request. Shows the full mail and requires you to type `send`."""
+    from datetime import date
+    from pathlib import Path
+
+    from auskunft import mailer
+    from auskunft.deadline import due_date
+    from auskunft.render import Letter
+
+    settings = load_settings()
+    txt, meta_path = Path("drafts") / f"{slug}.txt", Path("drafts") / f"{slug}.json"
+    if not txt.is_file() or not meta_path.is_file():
+        console.print(f"[red]No draft for {slug}.[/red] Run `auskunft draft {slug}` first.")
+        raise typer.Exit(code=1)
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    letter = Letter(
+        tracking_id=meta["tracking_id"], to_email=meta["to_email"], to_name=meta["to_name"],
+        subject=meta["subject"], body=txt.read_text(encoding="utf-8"),
+        sent_date=date.today(), company_slug=slug, meta=meta.get("meta", {}),
+    )
+    led = _ledger()
+    if led.by_tracking(letter.tracking_id):
+        console.print(f"[red]{letter.tracking_id} is already in the ledger. Not sending twice.[/red]")
+        raise typer.Exit(code=1)
+
+    console.rule("[bold]Outgoing mail[/bold]")
+    console.print(f"From:    {settings.from_name} <{settings.from_email}>")
+    console.print(f"To:      {letter.to_name} <{letter.to_email}>")
+    console.print(f"Subject: {letter.subject}")
+    console.rule()
+    console.print(letter.body, markup=False, highlight=False)
+    console.rule()
+    due = due_date(date.today())
+    console.print(f"Deadline if sent today: [bold]{due:%d.%m.%Y}[/bold] (Art. 12(3), one month)")
+    if dry_run:
+        console.print("[yellow]dry run: nothing sent, nothing logged[/yellow]")
+        return
+    answer = typer.prompt("Type 'send' to send this mail, anything else to abort")
+    if answer.strip() != "send":
+        console.print("[yellow]aborted, nothing sent[/yellow]")
+        raise typer.Exit(code=0)
+    try:
+        msg_id = mailer.send(letter, settings, approved=True)
+    except Exception as e:  # noqa: BLE001 - surface any SMTP failure verbatim, nothing is logged
+        console.print(f"[red]send failed:[/red] {e}")
+        raise typer.Exit(code=1) from None
+    r = led.create(slug, letter.to_name, letter.to_email, letter.tracking_id, state="sent",
+                   sent_at=date.today(), due_at=due, synthetic=False)
+    led.log(r.id, "smtp:sent", {"message_id": msg_id, "to": letter.to_email})
+    console.print(f"[green]sent[/green] #{r.id} {letter.to_name}  ref {letter.tracking_id}  "
+                  f"due {due:%d.%m.%Y}  message-id {msg_id}")

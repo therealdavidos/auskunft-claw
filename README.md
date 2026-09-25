@@ -7,7 +7,7 @@ Every company you have ever dealt with holds data about you. Under GDPR Art. 15 
 Entry for the NVIDIA Berlin Claw Agent Challenge (Oct 2026). Built on OpenClaw / NemoClaw.
 
 ## Status
-Day 1 (Sept 25): CLI skeleton. See `docs/04-day1-plan.md`.
+Day 1 (Sept 25): `lookup`, `draft`, `send` (approval-gated), `ls`, `add-synthetic`, deadline engine, ledger. See `docs/04-day1-plan.md`.
 
 ## Quick start
 ```bash
