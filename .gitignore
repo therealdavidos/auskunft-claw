@@ -1,0 +1,32 @@
+# secrets and personal data — never commit
+.env
+.env.*
+data/
+drafts/
+demo/real/
+*.db
+*.sqlite
+*.pfx
+*.p12
+*.pem
+*.eml
+*.mbox
+*.zip
+
+# vendored datenanfragen.de data (git clone at build time)
+vendor/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

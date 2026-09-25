@@ -1,0 +1,34 @@
+[project]
+name = "auskunfts-claw"
+version = "0.1.0"
+description = "A long-running agent that exercises your GDPR Art. 15 access rights: discovers who holds your data, sends requests after approval, tracks deadlines, reads replies, escalates, and builds a map of who knows what about you."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "typer>=0.12",
+    "rich>=13",
+    "imap-tools>=1.7",
+    "holidays>=0.50",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+auskunft = "auskunft.cli:app"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["auskunft"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
