@@ -334,3 +334,37 @@ def facts(
         console.print(f"address: {a}")
     if not f.numbers and not f.addresses:
         console.print("[dim]no customer numbers or addresses found in these mails[/dim]")
+
+
+@app.command()
+def show(
+    slug: str = typer.Argument(None, help="Draft to show; omit to list all drafts"),
+) -> None:
+    """Show a draft exactly as it would be sent (recipient, subject, full text)."""
+    from pathlib import Path
+
+    d = Path("drafts")
+    if slug is None:
+        metas = sorted(d.glob("*.json"))
+        if not metas:
+            console.print("[dim]no drafts. Run `auskunft draft <slug>`.[/dim]")
+            return
+        t = Table(title="Drafts (not sent)")
+        for col in ("slug", "to", "ref", "date"):
+            t.add_column(col)
+        for m in metas:
+            meta = json.loads(m.read_text(encoding="utf-8"))
+            t.add_row(meta["slug"], f"{meta['to_name']} <{meta['to_email']}>",
+                      meta["tracking_id"], meta["date"])
+        console.print(t)
+        return
+    txt, meta_path = d / f"{slug}.txt", d / f"{slug}.json"
+    if not txt.is_file():
+        console.print(f"[red]no draft for {slug}[/red]")
+        raise typer.Exit(code=1)
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    console.rule(f"[bold]{slug}[/bold]  → {meta['to_name']} <{meta['to_email']}>")
+    console.print(f"Subject: {meta['subject']}")
+    console.rule()
+    console.print(txt.read_text(encoding="utf-8"), markup=False, highlight=False)
+    console.rule()
