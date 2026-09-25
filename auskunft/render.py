@@ -105,7 +105,7 @@ def render_access_request(
     id_data = id_data_lines(sender, company, extra_id)
     body = fill_template(
         template,
-        variables={"id_data": id_data, "runs_list": ", ".join(company.runs)},
+        variables={"id_data": id_data + "\n", "runs_list": ", ".join(company.runs)},
         flags={"data_portability": data_portability, "has_fields": True, "runs": bool(company.runs)},
     )
     subject = f"Auskunftsersuchen nach Art. 15 DSGVO [Ref: {tid}]"
