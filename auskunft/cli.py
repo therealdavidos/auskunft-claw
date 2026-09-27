@@ -264,6 +264,11 @@ def send(
     if answer.strip() != "send":
         console.print("[yellow]aborted, nothing sent[/yellow]")
         raise typer.Exit(code=0)
+    # re-check at the moment of sending: another process may have sent this draft meanwhile
+    if _ledger().by_tracking(letter.tracking_id):
+        console.print(f"[red]{letter.tracking_id} was sent by another process while this prompt "
+                      "was open. Not sending twice.[/red]")
+        raise typer.Exit(code=1)
     try:
         msg_id = mail.send(letter, settings, approved=True)
     except Exception as e:  # noqa: BLE001 - surface any SMTP failure verbatim, nothing is logged
