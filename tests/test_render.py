@@ -75,3 +75,13 @@ def test_birthdate_only_when_required():
 def test_markup_stripped():
     out = fill_template("Kopie <italic>sämtlicher</italic> Daten", {}, {})
     assert out == "Kopie sämtlicher Daten\n"
+
+
+def test_polite_drops_threat_sentence():
+    tpl = ("Hallo\n[has_fields>{id_data}\n]Sollten Sie meiner Anfrage nicht innerhalb der genannten "
+           "Frist nachkommen, behalte ich mir vor rechtliche Schritte gegen Sie einzuleiten und "
+           "Beschwerde bei der zuständigen Datenschutzaufsichtsbehörde einzureichen.\n\nDanke\n")
+    firm = render_access_request(_company(), SENDER, tpl, today=date(2026, 9, 25))
+    soft = render_access_request(_company(), SENDER, tpl, today=date(2026, 9, 25), polite=True)
+    assert "rechtliche Schritte" in firm.body
+    assert "rechtliche Schritte" not in soft.body and "Danke" in soft.body

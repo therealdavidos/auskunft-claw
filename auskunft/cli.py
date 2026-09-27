@@ -80,6 +80,7 @@ def draft(
         [], "--id", help="Extra identification, e.g. --id 'Kundennummer=123'. Repeatable."
     ),
     no_portability: bool = typer.Option(False, "--no-portability", help="Omit the Art. 20 request"),
+    polite: bool = typer.Option(False, "--polite", help="Drop the legal-steps sentence (first contact)"),
     show: bool = typer.Option(True, "--show/--no-show", help="Print the draft"),
 ) -> None:
     """Render an Art. 15 request for a company into drafts/<slug>.txt (nothing is sent)."""
@@ -113,6 +114,7 @@ def draft(
         store.template("access-default"),
         extra_id=extra,
         data_portability=not no_portability,
+        polite=polite,
     )
     out_dir = Path("drafts")
     out_dir.mkdir(exist_ok=True)

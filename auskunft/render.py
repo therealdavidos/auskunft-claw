@@ -21,6 +21,10 @@ _BLOCK = re.compile(r"\[([a-z_]+)>(.*?)\]", re.DOTALL)
 _VAR = re.compile(r"\{([a-z_]+)\}")
 _PROMPT = re.compile(r"\{([^{}]*\s[^{}]*)\}")  # curly with whitespace inside
 _MARKUP = re.compile(r"</?(italic|bold|underline)>")  # datenanfragen.de inline markup
+_THREAT = re.compile(
+    r"Sollten Sie meiner Anfrage nicht innerhalb der genannten Frist nachkommen.*?einzureichen\.\s*",
+    re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,7 @@ def render_access_request(
     today: date | None = None,
     tracking_id: str | None = None,
     data_portability: bool = True,
+    polite: bool = False,
 ) -> Letter:
     today = today or date.today()
     tid = tracking_id or new_tracking_id(company.slug, today)
@@ -108,6 +113,9 @@ def render_access_request(
         variables={"id_data": id_data + "\n", "runs_list": ", ".join(company.runs)},
         flags={"data_portability": data_portability, "has_fields": True, "runs": bool(company.runs)},
     )
+    if polite:
+        # First contact: drop the "legal steps and complaint" sentence; it returns in the admonition.
+        body = _THREAT.sub("", body)
     subject = f"Auskunftsersuchen nach Art. 15 DSGVO [Ref: {tid}]"
     head = (
         f"{sender.name}\n{sender.postal_address}\n{sender.email}\n\n"
@@ -125,7 +133,8 @@ def render_access_request(
         body=full,
         sent_date=today,
         company_slug=company.slug,
-        meta={"template": "access-default", "runs": ", ".join(company.runs)},
+        meta={"template": "access-default", "runs": ", ".join(company.runs),
+              "polite": str(polite)},
     )
 
 
