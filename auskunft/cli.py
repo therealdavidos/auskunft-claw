@@ -407,3 +407,45 @@ def check(
         console.print(f"[dim]{len(unmatched)} other new mails not related to open requests[/dim]")
     if dry_run:
         console.print("[yellow]dry run: nothing recorded[/yellow]")
+
+
+@app.command()
+def tick(
+    as_json: bool = typer.Option(False, "--json"),
+    warn_days: int = typer.Option(7, "--warn-days", help="Flag deadlines within N days"),
+) -> None:
+    """Daily clock check: mark overdue requests, list deadlines that are close. Sends nothing."""
+    from datetime import date
+
+    from auskunft.deadline import days_left
+
+    led = _ledger()
+    today = date.today()
+    overdue, soon, report = [], [], []
+    for r in led.all(include_closed=False):
+        due = r.effective_due
+        if not due:
+            continue
+        left = days_left(due, today)
+        if left < 0 and r.state in {"sent", "acknowledged", "clarification", "portal-redirect",
+                                    "extended"}:
+            r = led.transition(r.id, "overdue", {"by": "tick", "days_over": -left})
+            overdue.append(r)
+        elif 0 <= left <= warn_days and r.state not in {"overdue", "reminded", "escalated",
+                                                        "answered-full", "no-data", "closed"}:
+            soon.append((r, left))
+        report.append({"id": r.id, "org": r.org_name, "state": r.state, "due": due.isoformat(),
+                       "days_left": left, "synthetic": r.synthetic})
+    if as_json:
+        console.print_json(json.dumps({"date": today.isoformat(),
+                                       "overdue": [x["id"] for x in report if x["state"] == "overdue"],
+                                       "due_soon": [r.id for r, _ in soon], "requests": report},
+                                      ensure_ascii=False))
+        return
+    for r in overdue:
+        console.print(f"[red]overdue[/red] #{r.id} {r.org_name} (due {r.effective_due:%d.%m.%Y}) "
+                      f"→ draft a reminder with `auskunft remind {r.id}`")
+    for r, left in soon:
+        console.print(f"[yellow]{left} days left[/yellow] #{r.id} {r.org_name} (due {r.effective_due:%d.%m.%Y})")
+    if not overdue and not soon:
+        console.print(f"[dim]{today:%d.%m.%Y}: no deadlines within {warn_days} days, nothing overdue[/dim]")
