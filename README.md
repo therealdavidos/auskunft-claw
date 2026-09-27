@@ -7,7 +7,8 @@ Every company you have ever dealt with holds data about you. Under GDPR Art. 15 
 Entry for the NVIDIA Berlin Claw Agent Challenge (Oct 2026). Built on OpenClaw / NemoClaw.
 
 ## Status
-Day 1 (Sept 25): `lookup`, `draft`, `send` (approval-gated), `ls`, `add-synthetic`, deadline engine, ledger. See `docs/04-day1-plan.md`.
+- Day 1 (Sept 25–27): `discover`, `facts`, `lookup`, `draft`, `show`, `send` (approval-gated, via himalaya), `ls`, deadline engine, ledger. Five real requests sent.
+- Day 2 (Sept 27): `check` (reply intake + rule classifier), `tick` (daily clock), OpenClaw skill (`skill/SKILL.md`, `make install-skill`), two OpenClaw cron jobs (`auskunft-check` every 30 min, `auskunft-tick` daily 09:00 Berlin).
 
 ## What is ours and what is OpenClaw's
 We write as little as possible. OpenClaw / NemoClaw provides the runtime, the local model, the scheduler
