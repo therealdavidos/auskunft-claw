@@ -370,3 +370,40 @@ def show(
     console.rule()
     console.print(txt.read_text(encoding="utf-8"), markup=False, highlight=False)
     console.rule()
+
+
+@app.command()
+def check(
+    mailbox: str = typer.Option("INBOX", "--mailbox"),
+    since: str = typer.Option(None, "--since", help="ISO date; default = earliest open send date"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Classify but do not record"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Read new replies, match them to open requests, classify, update the ledger."""
+    from datetime import date
+
+    from auskunft.intake import NEEDS_HUMAN
+    from auskunft.intake import check as _check
+
+    settings = load_settings()
+    led = _ledger()
+    hits, unmatched = _check(settings, _store(), led, mailbox=mailbox,
+                             since=date.fromisoformat(since) if since else None, dry_run=dry_run)
+    if as_json:
+        console.print_json(json.dumps([
+            {"request_id": h.request.id, "org": h.request.org_name, "ref": h.request.tracking_id,
+             "state": h.state, "pattern": h.pattern, "subject": h.envelope.get("subject"),
+             "date": h.envelope.get("date"), "needs_human": h.state in NEEDS_HUMAN}
+            for h in hits], ensure_ascii=False))
+        return
+    if not hits:
+        console.print("[dim]no new replies to open requests[/dim]")
+    for h in hits:
+        flag = "[yellow]needs you[/yellow]" if h.state in NEEDS_HUMAN else "[green]auto[/green]"
+        console.print(f"#{h.request.id} {h.request.org_name}: [bold]{h.state}[/bold] {flag}  "
+                      f"[dim]{h.envelope.get('date', '')[:16]}  «{(h.envelope.get('subject') or '')[:60]}»  "
+                      f"rule: {h.pattern}[/dim]")
+    if unmatched:
+        console.print(f"[dim]{len(unmatched)} other new mails not related to open requests[/dim]")
+    if dry_run:
+        console.print("[yellow]dry run: nothing recorded[/yellow]")
