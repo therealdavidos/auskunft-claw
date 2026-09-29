@@ -1,6 +1,6 @@
 ---
 name: auskunft
-description: Auskunfts-Claw – exercise the user's GDPR Art. 15 access rights. Discover which companies hold their data, draft and (after explicit approval) send requests, track the one-month deadlines, read and classify replies, escalate. Use for anything about Datenauskunft, DSGVO Art. 15, "wer hat meine Daten", data access requests, reply status, deadlines.
+description: Auskunfts-Claw – the user's GDPR Art. 15 data-access project. USE THIS SKILL whenever the user asks about any company replying, answering, writing or responding (e.g. "did Wise reply?", "hat Schufa geantwortet?", "what did Flixbus write?"), about e-mails from companies, request status, deadlines, Fristen, Datenauskunft, DSGVO, "wer hat meine Daten", reminders, complaints, or which companies hold their data. Never answer such questions from memory or chat history; run the CLI.
 metadata:
   {
     "openclaw":
@@ -31,6 +31,7 @@ cd /Users/davidfitzek/repos/auskunft-claw && uv run auskunft <command> [options]
 | `show [<slug>]` | List drafts, or print one exactly as it would be sent | no |
 | `send <slug>` | Send a draft via himalaya. **Interactive: it requires the word `send` on stdin.** Pipe it only after the user approved in chat: `printf 'send\n' \| uv run auskunft send <slug>` | **yes** |
 | `ls [--all] [--json]` | Ledger: every request, state, deadline, days left | no |
+| `replies [<id|slug|name>] --json` | What a company actually wrote: every reply with date, classification, attachments and an excerpt | no |
 | `check [--json]` | Fetch new replies, match to open requests, classify, update ledger. Output marks `needs_human` | no |
 | `tick [--json]` | Daily clock: mark overdue, list deadlines within 7 days | no |
 | `add-synthetic <slug>…` | Demo rows without sending | no |
@@ -53,3 +54,5 @@ cd /Users/davidfitzek/repos/auskunft-claw && uv run auskunft <command> [options]
 **Daily tick (cron):** `tick --json`. If nothing is overdue or due within 7 days, reply exactly `NO_REPLY`. Otherwise list them; for overdue ones offer to draft the reminder (`remind`, coming).
 
 **Status question:** `ls --json` and answer in plain language.
+
+**"Did X reply / what did X write?"** Always: `check --json` first (fetches anything new), then `replies <slug-or-name> --json`, then answer with the date, what kind of reply it was, and a one-sentence summary of the excerpt. If the list is empty, say that no reply from X has arrived yet and when the deadline is.

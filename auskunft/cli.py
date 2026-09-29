@@ -743,3 +743,51 @@ def demo_fixtures(out_dir: str = typer.Option("fixtures/replies", "--out"),
     paths = fixtures(_ledger(), Path(out_dir), date.fromisoformat(base))
     for p in paths:
         console.print(f"wrote {p}")
+
+
+@app.command()
+def replies(
+    which: str = typer.Argument(None, help="Ledger id or company slug/name; omit for all"),
+    as_json: bool = typer.Option(False, "--json"),
+    chars: int = typer.Option(700, "--chars", help="Excerpt length per reply"),
+) -> None:
+    """What did a company actually write? Replies received per request, with excerpts."""
+    from pathlib import Path
+
+    led = _ledger()
+    reqs = led.all(include_closed=True)
+    if which:
+        w = which.strip().lower()
+        reqs = [r for r in reqs if str(r.id) == w or r.slug == w or w in r.org_name.lower()]
+        if not reqs:
+            console.print(f"[red]no request matches '{which}'[/red]")
+            raise typer.Exit(code=1)
+    out = []
+    for r in reqs:
+        for e in led.events(r.id):
+            if e["kind"] != "reply:received":
+                continue
+            p = e.get("payload") or {}
+            excerpt = ""
+            saved = p.get("saved")
+            if saved and Path(saved).is_file():
+                txt = Path(saved).read_text(encoding="utf-8", errors="replace")
+                body = txt.split("\n\n", 1)[1] if "\n\n" in txt else txt
+                from auskunft.intake import strip_quoted
+                excerpt = strip_quoted(body, load_settings().from_name).strip()[:chars]
+            out.append({"request_id": r.id, "org": r.org_name, "slug": r.slug, "ref": r.tracking_id,
+                        "state_now": r.state, "received": (p.get("date") or e["ts"])[:16],
+                        "subject": p.get("subject"), "classified": p.get("classified"),
+                        "attachments": p.get("attachments", []), "excerpt": excerpt})
+    if as_json:
+        console.print_json(json.dumps(out, ensure_ascii=False))
+        return
+    if not out:
+        console.print("[dim]no replies received" + (f" for '{which}'" if which else "") + "[/dim]")
+        return
+    for o in out:
+        console.rule(f"#{o['request_id']} {o['org']} · {o['received']} · [bold]{o['classified']}[/bold]")
+        console.print(f"[dim]{o['subject']}[/dim]")
+        if o["attachments"]:
+            console.print("attachments: " + ", ".join(o["attachments"]))
+        console.print(o["excerpt"], markup=False, highlight=False)
