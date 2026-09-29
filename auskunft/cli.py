@@ -383,7 +383,8 @@ def check(
     since: str = typer.Option(None, "--since", help="ISO date; default = earliest open send date"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Classify but do not record"),
     as_json: bool = typer.Option(False, "--json"),
-    from_file: list[str] = typer.Option([], "--from-file", help=".eml file(s) instead of IMAP (demo/tests)"),
+    from_file: list[str] = typer.Option([], "--from-file", help=".eml file instead of IMAP (repeatable)"),
+    from_dir: str = typer.Option(None, "--from-dir", help="Directory of .eml files instead of IMAP"),
     zip_password: str = typer.Option(None, "--zip-password", help="Password for encrypted ZIP attachments"),
 ) -> None:
     """Read new replies, match them to open requests, classify, update the ledger."""
@@ -395,6 +396,8 @@ def check(
 
     settings = load_settings()
     led = _ledger()
+    if from_dir:
+        from_file = [str(p) for p in sorted(Path(from_dir).glob("*.eml"))]
     if from_file:
         hits, unmatched = check_files(settings, _store(), led, [Path(f) for f in from_file],
                                       dry_run=dry_run, zip_password=zip_password)
