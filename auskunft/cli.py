@@ -734,7 +734,8 @@ app.add_typer(demo_app, name="demo")
 
 
 @demo_app.command("seed")
-def demo_seed(sent_on: str = typer.Option("2026-09-27", "--sent-on")) -> None:
+def demo_seed(sent_on: str = typer.Option("2026-09-27", "--sent-on"),
+              reveal: bool = typer.Option(False, "--reveal", help="Show each company's scripted role")) -> None:
     """Create synthetic requests for the demo scenario."""
     from datetime import date
 
@@ -752,7 +753,8 @@ def demo_seed(sent_on: str = typer.Option("2026-09-27", "--sent-on")) -> None:
         r = led.create(slug, c.name, c.email, new_tracking_id(slug, day), state="sent", sent_at=day,
                        due_at=due_date(day), synthetic=True, notes=f"demo scenario: {kind}",
                        ts=f"{day.isoformat()}T09:00:00")
-        console.print(f"#{r.id} {c.name:32} plays [bold]{kind}[/bold]  {r.tracking_id}")
+        role = f"  plays [bold]{kind}[/bold]" if reveal else ""
+        console.print(f"#{r.id} {c.name:32} sent {day:%d.%m.%Y}, due {r.due_at:%d.%m.%Y}{role}  [dim]{r.tracking_id}[/dim]")
 
 
 @demo_app.command("fixtures")
