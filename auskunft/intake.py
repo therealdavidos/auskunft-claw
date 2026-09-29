@@ -17,6 +17,7 @@ from auskunft.analysis import analyse
 from auskunft.attachments import unpack
 from auskunft.config import Settings
 from auskunft.data import DataStore
+from auskunft.deadline import extended_due_date
 from auskunft.discover import registrable, to_text
 from auskunft.ledger import Ledger, Request
 from auskunft.mail import himalaya_cmd
@@ -170,10 +171,27 @@ def process_reply(settings: Settings, led: Ledger, req: Request, env: dict, text
         path.write_text(f"Subject: {env.get('subject')}\nFrom: {env.get('from')}\nDate: {env.get('date')}\n\n{full_text}",
                         encoding="utf-8")
         payload["saved"] = str(path)
-        led.log(req.id, "reply:received", payload)
+        ts = _event_ts(env.get("date")) if source.startswith("file:") else None
+        led.log(req.id, "reply:received", payload, ts=ts)
         if RANK.get(state, 0) > RANK.get(req.state, 0):
-            led.transition(req.id, state, {"by": "intake", "message_id": mid})
+            fields = {}
+            if state == "extended" and req.sent_at:
+                # Art. 12(3) s. 2: up to two further months when notified within the first month
+                fields["extended_until"] = extended_due_date(req.sent_at, 2)
+            led.transition(req.id, state, {"by": "intake", "message_id": mid}, ts=ts, **fields)
     return state, pat, payload
+
+
+def _event_ts(date_header: str | None) -> str | None:
+    """RFC 2822 date → ISO timestamp, so simulated replies carry their own date in the ledger."""
+    if not date_header:
+        return None
+    from email.utils import parsedate_to_datetime
+
+    try:
+        return parsedate_to_datetime(date_header).isoformat(timespec="seconds")
+    except (TypeError, ValueError):
+        return None
 
 
 def parse_eml(raw: bytes) -> tuple[dict, str, list[tuple[str, bytes]]]:

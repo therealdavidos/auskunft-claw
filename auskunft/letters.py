@@ -85,7 +85,7 @@ def render_admonition(store: DataStore, *, sender: tuple[str, str, str], company
                       company_address: str, request_date: date, tracking_id: str, today: date,
                       days_over: int) -> tuple[str, str]:
     problem = (f"Leider erhielt ich bisher keine Antwort von Ihnen. Damit ist die Frist von einem Monat "
-               f"nach Art. 12 Abs. 3 S. 1 DSGVO seit {days_over} Tagen überschritten.")
+               f"nach Art. 12 Abs. 3 S. 1 DSGVO seit {days_over} {'Tag' if days_over == 1 else 'Tagen'} überschritten.")
     body = fill_template(store.template("admonition"),
                          {"request_date": request_date.strftime("%d.%m.%Y"), "request_article": "15"}, {},
                          prompts={"Beschreibung des Problems, z. B.: Leider erhielt ich bisher keine Antwort "

@@ -158,6 +158,7 @@ def _ledger():
 def ls_cmd(
     all_rows: bool = typer.Option(False, "--all", help="Include closed requests"),
     as_json: bool = typer.Option(False, "--json"),
+    today_str: str = typer.Option(None, "--today", help="Time travel (ISO date)"),
 ) -> None:
     """Show the ledger: every request with its state and days left on the clock."""
     from datetime import date
@@ -166,15 +167,16 @@ def ls_cmd(
 
     led = _ledger()
     rows = led.all(include_closed=all_rows)
+    today = date.fromisoformat(today_str) if today_str else date.today()
     if as_json:
         console.print_json(json.dumps([r.__dict__ for r in rows], default=str, ensure_ascii=False))
         return
-    t = Table(title=f"Auskunfts-Claw ledger  [dim]{date.today():%d.%m.%Y}[/dim]")
+    t = Table(title=f"Auskunfts-Claw ledger  [dim]{today:%d.%m.%Y}[/dim]")
     for col in ("id", "org", "state", "sent", "due", "days", "ref", ""):
         t.add_column(col)
     for r in rows:
         due = r.effective_due
-        left = days_left(due) if due else None
+        left = days_left(due, today) if due else None
         if left is None:
             days = "-"
         elif left < 0:
@@ -446,12 +448,16 @@ def tick(
     today = date.fromisoformat(today_str) if today_str else date.today()
     if today_str:
         console.print(f"[magenta]time travel: today = {today:%d.%m.%Y}[/magenta]")
-    overdue, soon, report = [], [], []
+    overdue, soon, report, escalate_due = [], [], [], []
     for r in led.all(include_closed=False):
         due = r.effective_due
         if not due:
             continue
         left = days_left(due, today)
+        if r.state == "reminded":
+            rem = [e for e in led.events(r.id) if e["kind"] == "letter:reminder"]
+            if rem and (today - date.fromisoformat(rem[-1]["ts"][:10])).days >= 14:
+                escalate_due.append((r, (today - date.fromisoformat(rem[-1]["ts"][:10])).days))
         if left < 0 and r.state in {"sent", "acknowledged", "clarification", "portal-redirect",
                                     "extended"}:
             r = led.transition(r.id, "overdue", {"by": "tick", "days_over": -left})
@@ -464,15 +470,19 @@ def tick(
     if as_json:
         console.print_json(json.dumps({"date": today.isoformat(),
                                        "overdue": [x["id"] for x in report if x["state"] == "overdue"],
-                                       "due_soon": [r.id for r, _ in soon], "requests": report},
+                                       "due_soon": [r.id for r, _ in soon],
+                                       "escalate": [r.id for r, _ in escalate_due], "requests": report},
                                       ensure_ascii=False))
         return
+    for r, d in escalate_due:
+        console.print(f"[red]reminded {d} days ago, still nothing[/red] #{r.id} {r.org_name} "
+                      f"→ draft the complaint with `auskunft escalate {r.id}`")
     for r in overdue:
         console.print(f"[red]overdue[/red] #{r.id} {r.org_name} (due {r.effective_due:%d.%m.%Y}) "
                       f"→ draft a reminder with `auskunft remind {r.id}`")
     for r, left in soon:
         console.print(f"[yellow]{left} days left[/yellow] #{r.id} {r.org_name} (due {r.effective_due:%d.%m.%Y})")
-    if not overdue and not soon:
+    if not overdue and not soon and not escalate_due:
         console.print(f"[dim]{today:%d.%m.%Y}: no deadlines within {warn_days} days, nothing overdue[/dim]")
 
 
@@ -587,6 +597,8 @@ def followup(
 def send_letter(
     slug: str = typer.Argument(..., help="Draft slug, e.g. schufa-reminder"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    simulate: bool = typer.Option(False, "--simulate", help="Demo: log as sent, mail nothing (demo data dir only)"),
+    today_str: str = typer.Option(None, "--today", help="With --simulate: ledger timestamp to record"),
 ) -> None:
     """Send a reminder/complaint/follow-up draft via himalaya after typing `send`; logs it on the request."""
     from datetime import date
@@ -613,13 +625,23 @@ def send_letter(
     if dry_run:
         console.print("[yellow]dry run[/yellow]")
         return
-    if typer.prompt("Type 'send' to send, anything else to abort").strip() != "send":
-        console.print("[yellow]aborted[/yellow]")
-        raise typer.Exit(code=0)
-    msg_id = mail.send(letter, settings, approved=True)
-    led.log(req.id, f"letter:{meta['kind']}", {"message_id": msg_id, "to": letter.to_email, "subject": letter.subject})
+    ts = None
+    if simulate:
+        if "demo" not in str(settings.data_dir):
+            console.print("[red]--simulate only works on a demo data dir[/red]")
+            raise typer.Exit(code=1)
+        ts = f"{today_str}T10:00:00" if today_str else None
+        msg_id = "<simulated>"
+        console.print("[magenta]simulated: nothing was mailed[/magenta]")
+    else:
+        if typer.prompt("Type 'send' to send, anything else to abort").strip() != "send":
+            console.print("[yellow]aborted[/yellow]")
+            raise typer.Exit(code=0)
+        msg_id = mail.send(letter, settings, approved=True)
+    led.log(req.id, f"letter:{meta['kind']}", {"message_id": msg_id, "to": letter.to_email,
+                                               "subject": letter.subject, "simulated": simulate}, ts=ts)
     new_state = {"reminder": "reminded", "complaint": "complaint-filed", "followup": "answered-partial"}[meta["kind"]]
-    led.transition(req.id, new_state, {"by": "send-letter"})
+    led.transition(req.id, new_state, {"by": "send-letter"}, ts=ts)
     txt.unlink(), meta_path.unlink()
     console.print(f"[green]sent[/green] {meta['kind']} for #{req.id}, state → {new_state}")
 

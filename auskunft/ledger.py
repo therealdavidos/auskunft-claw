@@ -133,7 +133,7 @@ class Ledger:
         return req
 
     def transition(self, request_id: int, state: str, payload: dict[str, Any] | None = None,
-                   **fields: Any) -> Request:
+                   ts: str | None = None, **fields: Any) -> Request:
         if state not in STATES:
             raise ValueError(state)
         sets = ["state = ?"]
@@ -146,13 +146,14 @@ class Ledger:
         vals.append(request_id)
         self.conn.execute(f"UPDATE requests SET {', '.join(sets)} WHERE id = ?", vals)
         self.conn.commit()
-        self.log(request_id, f"state:{state}", payload)
+        self.log(request_id, f"state:{state}", payload, ts=ts)
         return self.get(request_id)
 
-    def log(self, request_id: int, kind: str, payload: dict[str, Any] | None = None) -> None:
+    def log(self, request_id: int, kind: str, payload: dict[str, Any] | None = None,
+            ts: str | None = None) -> None:
         self.conn.execute(
             "INSERT INTO events(request_id, ts, kind, payload) VALUES (?,?,?,?)",
-            (request_id, _now(), kind,
+            (request_id, ts or _now(), kind,
              json.dumps(payload, ensure_ascii=False, default=str) if payload else None),
         )
         self.conn.commit()
