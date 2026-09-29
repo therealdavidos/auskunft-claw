@@ -815,3 +815,67 @@ def replies(
         if o["attachments"]:
             console.print("attachments: " + ", ".join(o["attachments"]))
         console.print(o["excerpt"], markup=False, highlight=False)
+
+
+_DEMO_STEPS: list[tuple[str, list[list[str]]]] = [
+    ("Tag 0 (27.09.): neun Auskunftsersuchen gesendet, je eine Frist von einem Monat", [
+        ["demo", "seed"], ["demo", "fixtures"], ["ls", "--today", "2026-09-27"]]),
+    ("Tag 1–5: Antworten treffen ein und werden klassifiziert", [
+        ["check", "--from-dir", "fixtures/replies", "--zip-password", "DB-2026"]]),
+    ("Tag 5 (01.10.): Flixbus hat unvollständig geantwortet → Nachfrage", [
+        ["followup", "2", "--today", "2026-10-01"],
+        ["send-letter", "flixbus-followup", "--simulate", "--today", "2026-10-01"]]),
+    ("Tag 31 (28.10.): Tagescheck findet drei überfällige Anfragen → Erinnerungen", [
+        ["tick", "--today", "2026-10-28"],
+        ["remind", "5", "--today", "2026-10-28"], ["remind", "8", "--today", "2026-10-28"],
+        ["remind", "9", "--today", "2026-10-28"],
+        ["send-letter", "google-reminder", "--simulate", "--today", "2026-10-28"],
+        ["send-letter", "bolt-reminder", "--simulate", "--today", "2026-10-28"],
+        ["send-letter", "payback-reminder", "--simulate", "--today", "2026-10-28"]]),
+    ("Tag 45 (11.11.): nach der Erinnerung weiter Schweigen → Beschwerde bei der Aufsichtsbehörde", [
+        ["tick", "--today", "2026-11-11"], ["escalate", "9", "--today", "2026-11-11"],
+        ["send-letter", "payback-complaint", "--simulate", "--today", "2026-11-11"]]),
+    ("Wer weiß was über mich: Datenkarte und Bericht", [
+        ["map"], ["ls", "--today", "2026-11-11"],
+        ["report", "--today", "2026-11-11", "--out", "data-demo/report.html", "--title", "Auskunfts-Claw · Demo"]]),
+]
+
+
+@demo_app.command("step")
+def demo_step(
+    n: int = typer.Argument(..., help="0..5; 0 also resets the demo data"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Run one step of the demo timeline on the demo data dir (persona Max Mustermann, nothing mailed)."""
+    import os
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    if not 0 <= n < len(_DEMO_STEPS):
+        console.print(f"[red]step must be 0..{len(_DEMO_STEPS) - 1}[/red]")
+        raise typer.Exit(code=1)
+    env = {**os.environ, "AUSKUNFT_DATA_DIR": "data-demo", "AUSKUNFT_FROM_NAME": "Max Mustermann",
+           "AUSKUNFT_FROM_EMAIL": "max.mustermann@example.org",
+           "AUSKUNFT_POSTAL_ADDRESS": "Musterstraße 1, 12345 Musterstadt", "NO_COLOR": "1", "COLUMNS": "100"}
+    if n == 0:
+        shutil.rmtree("data-demo", ignore_errors=True)
+        shutil.rmtree("fixtures/replies", ignore_errors=True)
+        for p in Path("drafts").glob("*-*.*"):
+            if any(k in p.name for k in ("-reminder", "-complaint", "-followup")):
+                p.unlink()
+    title, cmds = _DEMO_STEPS[n]
+    outputs = []
+    for c in cmds:
+        res = subprocess.run(["uv", "run", "auskunft", *c], env=env, capture_output=True, text=True, check=False)
+        outputs.append({"cmd": " ".join(c), "out": (res.stdout + res.stderr).strip()[-4000:]})
+    if as_json:
+        console.print_json(json.dumps({"step": n, "title": title, "next": n + 1 if n + 1 < len(_DEMO_STEPS) else None,
+                                       "outputs": outputs}, ensure_ascii=False))
+        return
+    console.rule(f"[bold]Demo step {n}: {title}[/bold]")
+    for o in outputs:
+        console.print(f"[dim]$ auskunft {o['cmd']}[/dim]")
+        console.print(o["out"], markup=False, highlight=False)
+    if n + 1 < len(_DEMO_STEPS):
+        console.print(f"[dim]next: auskunft demo step {n + 1}[/dim]")

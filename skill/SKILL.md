@@ -53,6 +53,6 @@ cd /Users/davidfitzek/repos/auskunft-claw && uv run auskunft <command> [options]
 
 **Daily tick (cron):** `tick --json`. If nothing is overdue or due within 7 days, reply exactly `NO_REPLY`. Otherwise list them; for overdue ones offer to draft the reminder (`remind`, coming).
 
-**Status question:** `ls --json` and answer in plain language.
+**Demo ("Demo", "zeig mir die Demo", "starte die Simulation"):** a simulated 45-day timeline on a separate demo data dir with the persona Max Mustermann; nothing is mailed. Run `demo step 0 --json`, summarise the step's title and what happened in 3–5 short lines (German if the user writes German), then ask "Weiter?" and wait. On "weiter"/"next"/"ja" run the next step (`demo step 1` … `demo step 5`). Explain each day like a story: what arrived, what the agent decided, what needs the user. For step 5 mention that the report is at data-demo/report.html. Do not paste raw JSON.
 
 **"Did X reply / what did X write?"** Always: `check --json` first (fetches anything new), then `replies <slug-or-name> --json`, then answer with the date, what kind of reply it was, and a one-sentence summary of the excerpt. If the list is empty, say that no reply from X has arrived yet and when the deadline is.
