@@ -45,9 +45,40 @@ RANK = {s: i for i, s in enumerate(
 NEEDS_HUMAN = {"id-requested", "portal-redirect", "clarification", "refused", "answered-partial"}
 
 
-def classify(subject: str, text: str) -> tuple[str, str]:
-    """Return (state, matched_pattern). Subject is weighted by being scanned first."""
-    hay = f"{subject}\n{text}".lower()
+# Where quoted material starts: our own letter's sentences, mail-client quote headers, ticket
+# system separators. Everything from the earliest marker on is dropped before classifying.
+_QUOTE_MARKERS = (
+    r"ich bitte hiermit um auskunft gem[äa]ß art\. 15",
+    r"betreff: auskunftsersuchen nach art\. 15",
+    r"zur identifikation meiner person habe ich",
+    r"^\s*>",                                   # classic quoting
+    r"^on .{5,80} wrote:\s*$",                  # gmail/outlook english
+    r"^am .{5,80} schrieb .*:\s*$",             # german
+    r"^-{5,}\s*(original message|ursprüngliche nachricht)",
+    r"^von: .*\n(gesendet|sent): ",
+)
+_QUOTE_RE = re.compile("|".join(f"(?:{m})" for m in _QUOTE_MARKERS), re.IGNORECASE | re.MULTILINE)
+
+
+def strip_quoted(text: str, own_name: str = "") -> str:
+    """Keep only the company's own words: cut at the first sign of quoted or ticket-echoed text."""
+    cut = len(text)
+    m = _QUOTE_RE.search(text)
+    if m:
+        cut = min(cut, m.start())
+    if own_name:
+        last = own_name.split()[-1]
+        # ticket systems echo "<Name>, Sep 27, 2026, 15:28 UTC" before the quoted request
+        m2 = re.search(rf"^.*{re.escape(last)}.*\d{{4}}, \d{{1,2}}:\d{{2}} UTC\s*$", text,
+                       re.IGNORECASE | re.MULTILINE)
+        if m2:
+            cut = min(cut, m2.start())
+    return text[:cut]
+
+
+def classify(subject: str, text: str, own_name: str = "") -> tuple[str, str]:
+    """Return (state, matched_pattern). Quoted text is removed first; subject is scanned too."""
+    hay = f"{subject}\n{strip_quoted(text, own_name)}".lower()
     for state, pats in RULES:
         for p in pats:
             if re.search(p, hay):
@@ -127,7 +158,7 @@ def check(settings: Settings, store: DataStore, led: Ledger, mailbox: str = "INB
             unmatched.append(env)
             continue
         text = to_text(_read(settings, mailbox, env["id"]))
-        state, pat = classify(env.get("subject") or "", text)
+        state, pat = classify(env.get("subject") or "", text, settings.from_name)
         out = replies_dir / req.tracking_id
         out.mkdir(parents=True, exist_ok=True)
         path = out / f"{env['id']}.txt"

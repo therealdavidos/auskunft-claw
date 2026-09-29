@@ -1,4 +1,4 @@
-from auskunft.intake import REF_RE, classify
+from auskunft.intake import REF_RE, classify, strip_quoted
 
 
 def test_ref_regex():
@@ -24,3 +24,29 @@ def test_no_data_and_portal_and_default():
 
 def test_attachment_answer():
     assert classify("Ihre Datenauskunft", "Anbei erhalten Sie die Kopie Ihrer Daten.")[0] == "answered-partial"
+
+
+WISE = """##- Please type your reply above this line -##
+----------------------------------------------
+Gabriel, Sep 29, 2026, 13:12 UTC
+Hallo David,
+Danke für deine Anfrage. Wir haben es am 27.09.2026 erhalten und arbeiten jetzt daran.
+Liebe Grüße
+----------------------------------------------
+David Pascal Fitzek, Sep 27, 2026, 15:28 UTC
+David Fitzek
+Betreff: Auskunftsersuchen nach Art. 15 DSGVO [Ref: AK-1]
+Zur Identifikation meiner Person habe ich folgende Daten beigefügt:
+Name: David Fitzek
+"""
+
+
+def test_quoted_own_letter_does_not_trigger_id_rule():
+    kept = strip_quoted(WISE, "David Fitzek")
+    assert "arbeiten jetzt daran" in kept and "Identifikation" not in kept
+    assert classify("Re: Auskunft", WISE, "David Fitzek")[0] == "acknowledged"
+
+
+def test_gmail_quote_header_cut():
+    txt = "Wir brauchen nichts weiter.\n\nOn Mon, Sep 28, 2026 at 9:00 AM X wrote:\n> Ausweis bitte"
+    assert classify("Re", txt)[0] == "acknowledged"
