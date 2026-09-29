@@ -31,3 +31,6 @@ build/
 .idea/
 .vscode/
 data-demo/
+
+# keep the example config tracked
+!.env.example

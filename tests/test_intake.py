@@ -29,22 +29,22 @@ def test_attachment_answer():
 WISE = """##- Please type your reply above this line -##
 ----------------------------------------------
 Gabriel, Sep 29, 2026, 13:12 UTC
-Hallo David,
+Hallo Max,
 Danke für deine Anfrage. Wir haben es am 27.09.2026 erhalten und arbeiten jetzt daran.
 Liebe Grüße
 ----------------------------------------------
-David Pascal Fitzek, Sep 27, 2026, 15:28 UTC
-David Fitzek
+Max Mustermann, Sep 27, 2026, 15:28 UTC
+Max Mustermann
 Betreff: Auskunftsersuchen nach Art. 15 DSGVO [Ref: AK-1]
 Zur Identifikation meiner Person habe ich folgende Daten beigefügt:
-Name: David Fitzek
+Name: Max Mustermann
 """
 
 
 def test_quoted_own_letter_does_not_trigger_id_rule():
-    kept = strip_quoted(WISE, "David Fitzek")
+    kept = strip_quoted(WISE, "Max Mustermann")
     assert "arbeiten jetzt daran" in kept and "Identifikation" not in kept
-    assert classify("Re: Auskunft", WISE, "David Fitzek")[0] == "acknowledged"
+    assert classify("Re: Auskunft", WISE, "Max Mustermann")[0] == "acknowledged"
 
 
 def test_gmail_quote_header_cut():
