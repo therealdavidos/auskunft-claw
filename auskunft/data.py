@@ -38,7 +38,23 @@ class Company:
     quality: str
     custom_access_template: str | None
     pgp_fingerprint: str | None
+    request_language: str | None
     raw: dict[str, Any] = field(repr=False, compare=False)
+
+    @property
+    def letter_language(self) -> str:
+        """de for controllers seated in DE/AT/CH or records that ask for German, else en."""
+        if self.request_language in ("de", "en"):
+            return self.request_language
+        lines = [ln.strip().lower() for ln in self.address.splitlines() if ln.strip()]
+        country = lines[-1] if lines else ""
+        german = {"deutschland", "germany", "österreich", "austria", "schweiz", "switzerland",
+                  "liechtenstein"}
+        if country in german:
+            return "de"
+        if len(lines) >= 2 and __import__("re").match(r"^\d{5}\s+\S", country):
+            return "de"  # no country line, German-style "PLZ Ort" last line
+        return "en"
 
     @property
     def can_email(self) -> bool:
@@ -184,6 +200,7 @@ def _company_from_dict(d: dict[str, Any]) -> Company:
         quality=d.get("quality", ""),
         custom_access_template=d.get("custom-access-template"),
         pgp_fingerprint=d.get("pgp-fingerprint"),
+        request_language=d.get("request-language"),
         raw=d,
     )
 

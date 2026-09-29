@@ -81,6 +81,7 @@ def draft(
     ),
     no_portability: bool = typer.Option(False, "--no-portability", help="Omit the Art. 20 request"),
     polite: bool = typer.Option(False, "--polite", help="Drop the legal-steps sentence (first contact)"),
+    lang: str = typer.Option(None, "--lang", help="de or en; default from the company record / seat"),
     show: bool = typer.Option(True, "--show/--no-show", help="Print the draft"),
 ) -> None:
     """Render an Art. 15 request for a company into drafts/<slug>.txt (nothing is sent)."""
@@ -108,14 +109,20 @@ def draft(
         postal_address=settings.postal_address,
         birthdate=settings.birthdate,
     )
+    lang = (lang or company.letter_language).lower()
+    if lang not in ("de", "en"):
+        console.print("[red]--lang must be de or en[/red]")
+        raise typer.Exit(code=1)
     letter = render_access_request(
         company,
         sender,
-        store.template("access-default"),
+        store.template("access-default", lang=lang),
         extra_id=extra,
         data_portability=not no_portability,
         polite=polite,
+        lang=lang,
     )
+    console.print(f"[dim]language: {lang}[/dim]")
     out_dir = Path("drafts")
     out_dir.mkdir(exist_ok=True)
     txt = out_dir / f"{slug}.txt"

@@ -22,9 +22,18 @@ _VAR = re.compile(r"\{([a-z_]+)\}")
 _PROMPT = re.compile(r"\{([^{}]*\s[^{}]*)\}")  # curly with whitespace inside
 _MARKUP = re.compile(r"</?(italic|bold|underline)>")  # datenanfragen.de inline markup
 _THREAT = re.compile(
-    r"Sollten Sie meiner Anfrage nicht innerhalb der genannten Frist nachkommen.*?einzureichen\.\s*",
-    re.DOTALL,
+    r"(?:Sollten Sie meiner Anfrage nicht innerhalb der genannten Frist nachkommen.*?einzureichen\."
+    r"|If you do not (?:comply|respond|answer).*?authority\.)\s*",
+    re.DOTALL | re.IGNORECASE,
 )
+_L10N = {
+    "de": {"subject": "Auskunftsersuchen nach Art. 15 DSGVO", "re": "Betreff", "name": "Name",
+           "address": "Anschrift", "email": "E-Mail-Adresse", "dob": "Geburtsdatum",
+           "ref": "Referenz", "ref_note": "bitte in Ihrer Antwort angeben"},
+    "en": {"subject": "Data access request under Art. 15 GDPR", "re": "Subject", "name": "Name",
+           "address": "Postal address", "email": "E-mail address", "dob": "Date of birth",
+           "ref": "Reference", "ref_note": "please quote in your reply"},
+}
 
 
 @dataclass(frozen=True)
@@ -78,13 +87,14 @@ def fill_template(
     return out.strip() + "\n"
 
 
-def id_data_lines(sender: Sender, company: Company, extra: dict[str, str]) -> str:
+def id_data_lines(sender: Sender, company: Company, extra: dict[str, str], lang: str = "de") -> str:
     """Identification data: only what the company lists plus what the user chose to add."""
-    lines: list[str] = [f"Name: {sender.name}", f"Anschrift: {sender.postal_address}"]
-    lines.append(f"E-Mail-Adresse: {sender.email}")
+    t = _L10N[lang]
+    lines: list[str] = [f"{t['name']}: {sender.name}", f"{t['address']}: {sender.postal_address}"]
+    lines.append(f"{t['email']}: {sender.email}")
     wants_birthdate = any(e.type == "birthdate" for e in company.required_elements)
     if sender.birthdate and wants_birthdate:
-        lines.append(f"Geburtsdatum: {sender.birthdate}")
+        lines.append(f"{t['dob']}: {sender.birthdate}")
     for k, v in extra.items():
         if v:
             lines.append(f"{k}: {v}")
@@ -100,14 +110,15 @@ def render_access_request(
     tracking_id: str | None = None,
     data_portability: bool = True,
     polite: bool = False,
+    lang: str = "de",
 ) -> Letter:
     today = today or date.today()
     tid = tracking_id or new_tracking_id(company.slug, today)
     extra_id = extra_id or {}
     if not company.email:
         raise ValueError(f"{company.slug} has no email contact; transport is {company.transport}")
-
-    id_data = id_data_lines(sender, company, extra_id)
+    t = _L10N[lang]
+    id_data = id_data_lines(sender, company, extra_id, lang)
     body = fill_template(
         template,
         variables={"id_data": id_data + "\n", "runs_list": ", ".join(company.runs)},
@@ -116,14 +127,15 @@ def render_access_request(
     if polite:
         # First contact: drop the "legal steps and complaint" sentence; it returns in the admonition.
         body = _THREAT.sub("", body)
-    subject = f"Auskunftsersuchen nach Art. 15 DSGVO [Ref: {tid}]"
+    subject = f"{t['subject']} [Ref: {tid}]"
+    datestr = today.strftime("%d.%m.%Y") if lang == "de" else today.strftime("%-d %B %Y")
     head = (
         f"{sender.name}\n{sender.postal_address}\n{sender.email}\n\n"
         f"{company.name}\n{company.address}\n\n"
-        f"{today.strftime('%d.%m.%Y')}\n\n"
-        f"Betreff: {subject}\n\n"
+        f"{datestr}\n\n"
+        f"{t['re']}: {subject}\n\n"
     )
-    signature = f"{sender.name}\n\n(Referenz: {tid} – bitte in Ihrer Antwort angeben)\n"
+    signature = f"{sender.name}\n\n({t['ref']}: {tid} – {t['ref_note']})\n"
     full = head + body + signature
     return Letter(
         tracking_id=tid,
@@ -133,8 +145,8 @@ def render_access_request(
         body=full,
         sent_date=today,
         company_slug=company.slug,
-        meta={"template": "access-default", "runs": ", ".join(company.runs),
-              "polite": str(polite)},
+        meta={"template": f"{lang}/access-default", "runs": ", ".join(company.runs),
+              "polite": str(polite), "lang": lang},
     )
 
 

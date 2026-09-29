@@ -27,6 +27,7 @@ def _company(runs=(), email="datenschutz@example.org"):
         quality="verified",
         custom_access_template=None,
         pgp_fingerprint=None,
+        request_language=None,
         raw={},
     )
 
@@ -85,3 +86,10 @@ def test_polite_drops_threat_sentence():
     soft = render_access_request(_company(), SENDER, tpl, today=date(2026, 9, 25), polite=True)
     assert "rechtliche Schritte" in firm.body
     assert "rechtliche Schritte" not in soft.body and "Danke" in soft.body
+
+
+def test_english_letter():
+    tpl = "Hello,\n[has_fields>{id_data}\n]Thanks\n"
+    letter = render_access_request(_company(), SENDER, tpl, today=date(2026, 9, 30), lang="en")
+    assert letter.subject.startswith("Data access request under Art. 15 GDPR")
+    assert "Postal address: Weg 2, 10115 Berlin" in letter.body and "Subject:" in letter.body
