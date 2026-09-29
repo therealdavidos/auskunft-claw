@@ -492,6 +492,11 @@ def tick(
         console.print(f"[yellow]{left} days left[/yellow] #{r.id} {r.org_name} (due {r.effective_due:%d.%m.%Y})")
     if not overdue and not soon and not escalate_due:
         console.print(f"[dim]{today:%d.%m.%Y}: no deadlines within {warn_days} days, nothing overdue[/dim]")
+    import time as _time
+    root = load_settings().data_dir / "replies"
+    old = [p for p in root.rglob("*") if p.is_file() and p.stat().st_mtime < _time.time() - 30 * 86400] if root.exists() else []
+    if old:
+        console.print(f"[yellow]retention: {len(old)} stored reply files older than 30 days → `auskunft purge`[/yellow]")
 
 
 def _sender_tuple(settings):
@@ -678,20 +683,24 @@ def notify(
 
 
 @app.command("map")
-def data_map(as_json: bool = typer.Option(False, "--json")) -> None:
-    """Who holds what: everything learned from answers so far."""
+def data_map(as_json: bool = typer.Option(False, "--json"),
+             raw: bool = typer.Option(False, "--raw", help="Unredacted (local only)")) -> None:
+    """Who holds what: everything learned from answers so far (redacted unless --raw)."""
     from auskunft.analysis import label as _label
+    from auskunft.redact import redact
 
+    settings = load_settings()
     led = _ledger()
     rows = []
+    _r = (lambda x: x) if raw else (lambda x: redact(x, own_name=settings.from_name))
     for r in led.all(include_closed=True):
         for e in led.events(r.id):
             an = (e.get("payload") or {}).get("analysis")
             if an:
                 rows.append({"org": r.org_name, "ref": r.tracking_id, "date": e["ts"][:10],
-                             "score": an.get("score"), "categories": an.get("categories", []),
-                             "recipients": an.get("recipients", []),
-                             "found": {k: v for k, v in an.get("found", {}).items()},
+                             "score": an.get("score"), "categories": [_r(c) for c in an.get("categories", [])],
+                             "recipients": [_r(c) for c in an.get("recipients", [])],
+                             "found": {k: _r(v) for k, v in an.get("found", {}).items()},
                              "missing": an.get("missing", [])})
     if as_json:
         console.print_json(json.dumps(rows, ensure_ascii=False))
@@ -783,10 +792,14 @@ def replies(
     which: str = typer.Argument(None, help="Ledger id or company slug/name; omit for all"),
     as_json: bool = typer.Option(False, "--json"),
     chars: int = typer.Option(700, "--chars", help="Excerpt length per reply"),
+    raw: bool = typer.Option(False, "--raw", help="Unredacted (local viewing only; never for the agent)"),
 ) -> None:
-    """What did a company actually write? Replies received per request, with excerpts."""
+    """What did a company actually write? Replies received per request, redacted excerpts."""
     from pathlib import Path
 
+    from auskunft.redact import redact
+
+    settings = load_settings()
     led = _ledger()
     reqs = led.all(include_closed=True)
     if which:
@@ -807,7 +820,10 @@ def replies(
                 txt = Path(saved).read_text(encoding="utf-8", errors="replace")
                 body = txt.split("\n\n", 1)[1] if "\n\n" in txt else txt
                 from auskunft.intake import strip_quoted
-                excerpt = strip_quoted(body, load_settings().from_name).strip()[:chars]
+                excerpt = strip_quoted(body, settings.from_name).strip()[:chars]
+                if not raw:
+                    keep = tuple(d for d in (r.to_email or "@").split("@")[1:])
+                    excerpt = redact(excerpt, keep_emails_at=keep, own_name=settings.from_name)
             out.append({"request_id": r.id, "org": r.org_name, "slug": r.slug, "ref": r.tracking_id,
                         "state_now": r.state, "received": (p.get("date") or e["ts"])[:16],
                         "subject": p.get("subject"), "classified": p.get("classified"),
@@ -888,3 +904,31 @@ def demo_step(
         console.print(o["out"], markup=False, highlight=False)
     if n + 1 < len(_DEMO_STEPS):
         console.print(f"[dim]next: auskunft demo step {n + 1}[/dim]")
+
+
+@app.command()
+def purge(
+    older_than: int = typer.Option(30, "--older-than", help="Days; delete stored reply texts/attachments older than this"),
+    everything: bool = typer.Option(False, "--all", help="Delete all stored replies and attachments now"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Retention: delete stored reply files. The ledger (states, dates, analysis summary) is kept."""
+    import time
+
+    settings = load_settings()
+    root = settings.data_dir / "replies"
+    if not root.exists():
+        console.print("[dim]nothing stored[/dim]")
+        return
+    cutoff = time.time() - older_than * 86400
+    victims = [p for p in root.rglob("*") if p.is_file() and (everything or p.stat().st_mtime < cutoff)]
+    size = sum(p.stat().st_size for p in victims)
+    for p in victims:
+        if not dry_run:
+            p.unlink()
+    if not dry_run:
+        for d in sorted((d for d in root.rglob("*") if d.is_dir()), reverse=True):
+            if not any(d.iterdir()):
+                d.rmdir()
+    console.print(f"{'would delete' if dry_run else 'deleted'} {len(victims)} files, {size // 1024} KiB "
+                  f"({'all' if everything else f'older than {older_than} days'})")
