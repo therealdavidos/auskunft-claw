@@ -65,18 +65,32 @@ def _evidence(text: str, pats: tuple[str, ...]) -> str:
     return ""
 
 
-_LIST_AFTER = re.compile(r"(?:empf[äa]nger|recipients?|weitergegeben an|shared with)[^\n:]*[:\n]\s*((?:[-•*]?\s*[^\n]+\n?){1,12})",
+_LIST_AFTER = re.compile(r"(?:empf[äa]nger|recipients?|weitergegeben an|shared with)[^\n:]*:[ \t]*((?:[^\n]+\n?){1,12})",
                          re.IGNORECASE)
-_CAT_AFTER = re.compile(r"(?:kategorien?[^\n:]*|folgende daten|categories of data)[:\n]\s*((?:[-•*]?\s*[^\n]+\n?){1,15})",
+_CAT_AFTER = re.compile(r"(?:kategorien?[^\n:]*|folgende daten|categories of data):[ \t]*((?:[^\n]+\n?){1,15})",
                         re.IGNORECASE)
 
 
+_SECTION_START = re.compile(
+    r"^(verarbeitungszweck|zweck|kategorie|empf[äa]nger|speicherdauer|aufbewahrung|herkunft|quelle|"
+    r"automatisierte|profiling|ihre rechte|sie haben das recht|beschwerde|drittland|anbei|kopie|"
+    r"purpose|categor|recipient|retention|source|automated|your rights|complaint|attached|---|\[|[a-z]+ \| )",
+    re.IGNORECASE)
+
+
 def _bullets(block: str) -> list[str]:
+    """Items of a list that follows a label; stops at the next labelled section or table."""
     out = []
-    for line in block.splitlines():
+    for i, line in enumerate(block.splitlines()):
         line = line.strip(" -•*\t")
+        if not line:
+            continue
+        if i > 0 and _SECTION_START.match(line):
+            break
         if 2 < len(line) < 120 and not line.lower().startswith(("wir ", "we ", "die ", "the ")):
-            out.append(line)
+            # inline lists "A, B, C." → split
+            parts = [x.strip(" .") for x in re.split(r",\s+(?![^()]*\))", line)] if i == 0 and ":" not in line else [line]
+            out.extend(x for x in parts if x)
     return out[:15]
 
 

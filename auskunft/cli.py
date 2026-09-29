@@ -460,7 +460,8 @@ def tick(
                 escalate_due.append((r, (today - date.fromisoformat(rem[-1]["ts"][:10])).days))
         if left < 0 and r.state in {"sent", "acknowledged", "clarification", "portal-redirect",
                                     "extended"}:
-            r = led.transition(r.id, "overdue", {"by": "tick", "days_over": -left})
+            r = led.transition(r.id, "overdue", {"by": "tick", "days_over": -left},
+                               ts=f"{today.isoformat()}T09:00:00" if today_str else None)
             overdue.append(r)
         elif 0 <= left <= warn_days and r.state not in {"overdue", "reminded", "escalated",
                                                         "answered-full", "no-data", "closed"}:
@@ -749,7 +750,8 @@ def demo_seed(sent_on: str = typer.Option("2026-09-27", "--sent-on")) -> None:
     for slug, kind in SCENARIO:
         c = store.company(slug)
         r = led.create(slug, c.name, c.email, new_tracking_id(slug, day), state="sent", sent_at=day,
-                       due_at=due_date(day), synthetic=True, notes=f"demo scenario: {kind}")
+                       due_at=due_date(day), synthetic=True, notes=f"demo scenario: {kind}",
+                       ts=f"{day.isoformat()}T09:00:00")
         console.print(f"#{r.id} {c.name:32} plays [bold]{kind}[/bold]  {r.tracking_id}")
 
 

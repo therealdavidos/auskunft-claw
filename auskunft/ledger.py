@@ -116,10 +116,11 @@ class Ledger:
         due_at: date | None = None,
         synthetic: bool = False,
         notes: str | None = None,
+        ts: str | None = None,
     ) -> Request:
         if state not in STATES:
             raise ValueError(state)
-        now = _now()
+        now = ts or _now()
         cur = self.conn.execute(
             "INSERT INTO requests(slug, org_name, to_email, tracking_id, state, sent_at, due_at,"
             " synthetic, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -129,7 +130,7 @@ class Ledger:
         )
         self.conn.commit()
         req = self.get(cur.lastrowid)
-        self.log(req.id, "created", {"state": state, "synthetic": synthetic})
+        self.log(req.id, "created", {"state": state, "synthetic": synthetic}, ts=ts)
         return req
 
     def transition(self, request_id: int, state: str, payload: dict[str, Any] | None = None,
@@ -182,7 +183,7 @@ class Ledger:
 
     def events(self, request_id: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            "SELECT ts, kind, payload FROM events WHERE request_id = ? ORDER BY id",
+            "SELECT ts, kind, payload FROM events WHERE request_id = ? ORDER BY ts, id",
             (request_id,)).fetchall()
         return [{"ts": r["ts"], "kind": r["kind"],
                  "payload": json.loads(r["payload"]) if r["payload"] else None} for r in rows]
