@@ -9,8 +9,12 @@ import re
 import subprocess
 from dataclasses import dataclass
 from datetime import date, timedelta
+from email import message_from_bytes, policy
+from email.message import EmailMessage
 from pathlib import Path
 
+from auskunft.analysis import analyse
+from auskunft.attachments import unpack
 from auskunft.config import Settings
 from auskunft.data import DataStore
 from auskunft.discover import registrable, to_text
@@ -135,18 +139,115 @@ def _match(env: dict, open_reqs: list[Request], store: DataStore) -> Request | N
     return None
 
 
+def process_reply(settings: Settings, led: Ledger, req: Request, env: dict, text: str,
+                  attachments: list[tuple[str, bytes]], *, source: str, dry_run: bool = False,
+                  zip_password: str | None = None) -> tuple[str, str, dict]:
+    """Classify one reply (+ attachments), record it, advance the state. Returns (state, rule, payload)."""
+    mid = env.get("message-id") or env.get("id")
+    out = settings.data_dir / "replies" / req.tracking_id
+    att_texts: list[tuple[str, str]] = []
+    if not dry_run:
+        out.mkdir(parents=True, exist_ok=True)
+        for name, data in attachments:
+            att_texts.extend(unpack(name, data, out / "attachments", zip_password))
+    else:
+        att_texts = [(n, "") for n, _ in attachments]
+    state, pat = classify(env.get("subject") or "", text, settings.from_name)
+    payload: dict = {"message_id": mid, "imap_id": env.get("id"), "subject": env.get("subject"),
+                     "date": env.get("date"), "classified": state, "pattern": pat, "source": source,
+                     "attachments": [n for n, _ in att_texts]}
+    full_text = text + "\n\n" + "\n\n".join(f"--- {n} ---\n{t}" for n, t in att_texts if t)
+    if att_texts and state in ("acknowledged", "answered-partial", "clarification"):
+        state = "answered-partial"
+    if state == "answered-partial":
+        a = analyse(full_text)
+        payload["analysis"] = {"found": a.found, "missing": a.missing, "score": a.score,
+                               "recipients": a.recipients, "categories": a.categories}
+        if a.complete:
+            state = "answered-full"
+    if not dry_run:
+        path = out / f"{env.get('id') or 'reply'}.txt"
+        path.write_text(f"Subject: {env.get('subject')}\nFrom: {env.get('from')}\nDate: {env.get('date')}\n\n{full_text}",
+                        encoding="utf-8")
+        payload["saved"] = str(path)
+        led.log(req.id, "reply:received", payload)
+        if RANK.get(state, 0) > RANK.get(req.state, 0):
+            led.transition(req.id, state, {"by": "intake", "message_id": mid})
+    return state, pat, payload
+
+
+def parse_eml(raw: bytes) -> tuple[dict, str, list[tuple[str, bytes]]]:
+    """An .eml file → (envelope dict like himalaya's, body text, attachments)."""
+    msg: EmailMessage = message_from_bytes(raw, policy=policy.default)  # type: ignore[assignment]
+    froms = [{"name": n, "email": a} for n, a in [_addr(msg.get("From", ""))]]
+    env = {"id": (msg.get("Message-ID") or "").strip("<>") or "eml", "message-id": msg.get("Message-ID"),
+           "subject": msg.get("Subject", ""), "from": froms, "date": msg.get("Date", ""),
+           "has-attachment": False}
+    body = msg.get_body(preferencelist=("plain", "html"))
+    text = ""
+    if body is not None:
+        text = body.get_content()
+        if body.get_content_type() == "text/html":
+            text = to_text(text)
+    atts: list[tuple[str, bytes]] = []
+    for part in msg.iter_attachments():
+        name = part.get_filename() or "attachment.bin"
+        atts.append((name, part.get_payload(decode=True) or b""))
+    env["has-attachment"] = bool(atts)
+    return env, text, atts
+
+
+def _addr(s: str) -> tuple[str, str]:
+    from email.utils import parseaddr
+
+    return parseaddr(s)
+
+
+def check_files(settings: Settings, store: DataStore, led: Ledger, paths: list[Path],
+                dry_run: bool = False, zip_password: str | None = None) -> tuple[list[Hit], list[dict]]:
+    open_reqs = [r for r in led.all(include_closed=False) if r.sent_at]
+    hits, unmatched = [], []
+    for path in paths:
+        env, text, atts = parse_eml(Path(path).read_bytes())
+        req = _match(env, open_reqs, store)
+        if req is None:
+            unmatched.append(env)
+            continue
+        state, pat, payload = process_reply(settings, led, req, env, text, atts,
+                                            source=f"file:{path}", dry_run=dry_run,
+                                            zip_password=zip_password)
+        hits.append(Hit(req, env, state, pat, Path(payload.get("saved", ""))))
+    return hits, unmatched
+
+
+def _download_attachments(settings: Settings, mailbox: str, msg_id: str, tmp: Path) -> list[tuple[str, bytes]]:
+    tmp.mkdir(parents=True, exist_ok=True)
+    res = subprocess.run(
+        himalaya_cmd(settings, "attachment", "download", "--mailbox", mailbox, msg_id, "--dir", str(tmp)),
+        capture_output=True, text=True, check=False,
+    )
+    if res.returncode != 0:
+        return []
+    out = []
+    for f in sorted(tmp.iterdir()):
+        if f.is_file():
+            out.append((f.name, f.read_bytes()))
+            f.unlink()
+    return out
+
+
 def check(settings: Settings, store: DataStore, led: Ledger, mailbox: str = "INBOX",
           since: date | None = None, dry_run: bool = False) -> tuple[list[Hit], list[dict]]:
     open_reqs = [r for r in led.all(include_closed=False) if not r.synthetic and r.sent_at]
     if not open_reqs:
         return [], []
+    Path(settings.data_dir / "tmp").mkdir(parents=True, exist_ok=True)
     # himalaya's `after` is exclusive, so start one day before the earliest send
     since = since or (min(r.sent_at for r in open_reqs if r.sent_at) - timedelta(days=1))
     seen_ids = {e["payload"].get("message_id") for r in open_reqs for e in led.events(r.id)
                 if e["payload"] and e["kind"].startswith("reply")}
     hits: list[Hit] = []
     unmatched: list[dict] = []
-    replies_dir = settings.data_dir / "replies"
     for env in _search(settings, mailbox, since):
         mid = env.get("message-id") or env.get("id")
         if mid in seen_ids:
@@ -158,18 +259,9 @@ def check(settings: Settings, store: DataStore, led: Ledger, mailbox: str = "INB
             unmatched.append(env)
             continue
         text = to_text(_read(settings, mailbox, env["id"]))
-        state, pat = classify(env.get("subject") or "", text, settings.from_name)
-        out = replies_dir / req.tracking_id
-        out.mkdir(parents=True, exist_ok=True)
-        path = out / f"{env['id']}.txt"
-        if not dry_run:
-            path.write_text(f"Subject: {env.get('subject')}\nFrom: {env.get('from')}\nDate: {env.get('date')}\n\n{text}",
-                            encoding="utf-8")
-            payload = {"message_id": mid, "imap_id": env["id"], "subject": env.get("subject"),
-                       "date": env.get("date"), "classified": state, "pattern": pat,
-                       "has_attachment": env.get("has-attachment"), "saved": str(path)}
-            led.log(req.id, "reply:received", payload)
-            if RANK.get(state, 0) > RANK.get(req.state, 0):
-                led.transition(req.id, state, {"by": "intake", "message_id": mid})
+        atts = _download_attachments(settings, mailbox, env["id"], settings.data_dir / "tmp")
+        state, pat, payload = process_reply(settings, led, req, env, text, atts,
+                                            source="imap", dry_run=dry_run)
+        path = Path(payload.get("saved", ""))
         hits.append(Hit(req, env, state, pat, path))
     return hits, unmatched

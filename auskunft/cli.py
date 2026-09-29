@@ -383,17 +383,24 @@ def check(
     since: str = typer.Option(None, "--since", help="ISO date; default = earliest open send date"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Classify but do not record"),
     as_json: bool = typer.Option(False, "--json"),
+    from_file: list[str] = typer.Option([], "--from-file", help=".eml file(s) instead of IMAP (demo/tests)"),
+    zip_password: str = typer.Option(None, "--zip-password", help="Password for encrypted ZIP attachments"),
 ) -> None:
     """Read new replies, match them to open requests, classify, update the ledger."""
     from datetime import date
+    from pathlib import Path
 
-    from auskunft.intake import NEEDS_HUMAN
+    from auskunft.intake import NEEDS_HUMAN, check_files
     from auskunft.intake import check as _check
 
     settings = load_settings()
     led = _ledger()
-    hits, unmatched = _check(settings, _store(), led, mailbox=mailbox,
-                             since=date.fromisoformat(since) if since else None, dry_run=dry_run)
+    if from_file:
+        hits, unmatched = check_files(settings, _store(), led, [Path(f) for f in from_file],
+                                      dry_run=dry_run, zip_password=zip_password)
+    else:
+        hits, unmatched = _check(settings, _store(), led, mailbox=mailbox,
+                                 since=date.fromisoformat(since) if since else None, dry_run=dry_run)
     if as_json:
         console.print_json(json.dumps([
             {"request_id": h.request.id, "org": h.request.org_name, "ref": h.request.tracking_id,
@@ -408,6 +415,13 @@ def check(
         console.print(f"#{h.request.id} {h.request.org_name}: [bold]{h.state}[/bold] {flag}  "
                       f"[dim]{h.envelope.get('date', '')[:16]}  «{(h.envelope.get('subject') or '')[:60]}»  "
                       f"rule: {h.pattern}[/dim]")
+        if h.state in ("answered-partial", "answered-full"):
+            ev = led.events(h.request.id)[-1]
+            an = (ev.get("payload") or {}).get("analysis") or {}
+            if an:
+                from auskunft.analysis import label as _label
+                console.print(f"   completeness {an.get('score')}: "
+                              f"missing {', '.join(_label(k) for k in an.get('missing', [])) or 'nothing'}")
     if unmatched:
         console.print(f"[dim]{len(unmatched)} other new mails not related to open requests[/dim]")
     if dry_run:
@@ -418,6 +432,7 @@ def check(
 def tick(
     as_json: bool = typer.Option(False, "--json"),
     warn_days: int = typer.Option(7, "--warn-days", help="Flag deadlines within N days"),
+    today_str: str = typer.Option(None, "--today", help="Pretend it is this ISO date (demo/time travel)"),
 ) -> None:
     """Daily clock check: mark overdue requests, list deadlines that are close. Sends nothing."""
     from datetime import date
@@ -425,7 +440,9 @@ def tick(
     from auskunft.deadline import days_left
 
     led = _ledger()
-    today = date.today()
+    today = date.fromisoformat(today_str) if today_str else date.today()
+    if today_str:
+        console.print(f"[magenta]time travel: today = {today:%d.%m.%Y}[/magenta]")
     overdue, soon, report = [], [], []
     for r in led.all(include_closed=False):
         due = r.effective_due
@@ -454,3 +471,209 @@ def tick(
         console.print(f"[yellow]{left} days left[/yellow] #{r.id} {r.org_name} (due {r.effective_due:%d.%m.%Y})")
     if not overdue and not soon:
         console.print(f"[dim]{today:%d.%m.%Y}: no deadlines within {warn_days} days, nothing overdue[/dim]")
+
+
+def _sender_tuple(settings):
+    return (settings.from_name, settings.postal_address, settings.from_email)
+
+
+def _company_for(req):
+    try:
+        c = _store().company(req.slug)
+        return c.name, c.address
+    except KeyError:
+        return req.org_name, ""
+
+
+def _write_letter(kind: str, req, subject: str, text: str, to_email: str | None, to_name: str) -> None:
+    from pathlib import Path
+
+    d = Path("drafts")
+    d.mkdir(exist_ok=True)
+    slug = f"{req.slug}-{kind}"
+    (d / f"{slug}.txt").write_text(text, encoding="utf-8")
+    (d / f"{slug}.json").write_text(json.dumps({
+        "slug": slug, "request_id": req.id, "kind": kind, "tracking_id": req.tracking_id,
+        "to_email": to_email, "to_name": to_name, "subject": subject,
+        "date": __import__("datetime").date.today().isoformat(), "meta": {"kind": kind}},
+        ensure_ascii=False, indent=2), encoding="utf-8")
+    console.print(f"[green]{kind} drafted:[/green] drafts/{slug}.txt  → {to_name} <{to_email}>")
+    console.print(f"[dim]review with `auskunft show {slug}`, send with `auskunft send-letter {slug}`[/dim]")
+
+
+@app.command()
+def remind(
+    request_id: int = typer.Argument(..., help="Ledger id (see `auskunft ls`)"),
+    today_str: str = typer.Option(None, "--today", help="Time travel (ISO date)"),
+) -> None:
+    """Draft the reminder (Mahnung) for an overdue request. Nothing is sent."""
+    from datetime import date
+
+    from auskunft.deadline import days_left
+    from auskunft.letters import render_admonition
+
+    settings, led = load_settings(), _ledger()
+    req = led.get(request_id)
+    today = date.fromisoformat(today_str) if today_str else date.today()
+    over = -days_left(req.effective_due, today) if req.effective_due else 0
+    if over <= 0:
+        console.print(f"[yellow]#{req.id} is not overdue (due {req.effective_due}); drafting anyway[/yellow]")
+    name, addr = _company_for(req)
+    subject, text = render_admonition(_store(), sender=_sender_tuple(settings), company_name=name,
+                                      company_address=addr, request_date=req.sent_at, tracking_id=req.tracking_id,
+                                      today=today, days_over=max(over, 1))
+    _write_letter("reminder", req, subject, text, req.to_email, name)
+
+
+@app.command()
+def escalate(
+    request_id: int = typer.Argument(...),
+    today_str: str = typer.Option(None, "--today"),
+    my_authority: str = typer.Option("dendslfd", "--my-authority", help="Fallback authority slug (your Land)"),
+) -> None:
+    """Draft the Art. 77 complaint to the competent supervisory authority. Nothing is sent."""
+    from datetime import date
+
+    from auskunft.letters import authority_for, render_complaint
+
+    settings, led, store = load_settings(), _ledger(), _store()
+    req = led.get(request_id)
+    today = date.fromisoformat(today_str) if today_str else date.today()
+    name, addr = _company_for(req)
+    reminder_date = None
+    for e in led.events(req.id):
+        if e["kind"] == "letter:reminder":
+            reminder_date = date.fromisoformat(e["ts"][:10])
+    auth = authority_for(store, addr, my_authority)
+    subject, text = render_complaint(store, sender=_sender_tuple(settings), company_name=name,
+                                     company_address=addr, request_date=req.sent_at, reminder_date=reminder_date,
+                                     tracking_id=req.tracking_id, today=today, authority=auth)
+    console.print(f"competent authority: [bold]{auth.name}[/bold] ({auth.email or auth.webform})")
+    _write_letter("complaint", req, subject, text, auth.email, auth.name)
+
+
+@app.command()
+def followup(
+    request_id: int = typer.Argument(...),
+    today_str: str = typer.Option(None, "--today"),
+) -> None:
+    """Draft a follow-up asking for the Art. 15 items missing from a partial answer."""
+    from datetime import date
+
+    from auskunft.letters import render_followup
+
+    settings, led = load_settings(), _ledger()
+    req = led.get(request_id)
+    today = date.fromisoformat(today_str) if today_str else date.today()
+    missing, answer_date = [], today
+    for e in led.events(req.id):
+        an = (e.get("payload") or {}).get("analysis")
+        if an:
+            missing, answer_date = an.get("missing", []), date.fromisoformat(e["ts"][:10])
+    if not missing:
+        console.print("[yellow]no recorded gaps for this request[/yellow]")
+        raise typer.Exit(code=1)
+    name, addr = _company_for(req)
+    subject, text = render_followup(sender=_sender_tuple(settings), company_name=name, company_address=addr,
+                                    request_date=req.sent_at, answer_date=answer_date,
+                                    tracking_id=req.tracking_id, today=today, missing=missing)
+    _write_letter("followup", req, subject, text, req.to_email, name)
+
+
+@app.command("send-letter")
+def send_letter(
+    slug: str = typer.Argument(..., help="Draft slug, e.g. schufa-reminder"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Send a reminder/complaint/follow-up draft via himalaya after typing `send`; logs it on the request."""
+    from datetime import date
+    from pathlib import Path
+
+    from auskunft import mail
+    from auskunft.render import Letter
+
+    settings, led = load_settings(), _ledger()
+    txt, meta_path = Path("drafts") / f"{slug}.txt", Path("drafts") / f"{slug}.json"
+    if not txt.is_file():
+        console.print(f"[red]no draft {slug}[/red]")
+        raise typer.Exit(code=1)
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    req = led.get(meta["request_id"])
+    letter = Letter(tracking_id=req.tracking_id, to_email=meta["to_email"], to_name=meta["to_name"],
+                    subject=meta["subject"], body=txt.read_text(encoding="utf-8"), sent_date=date.today(),
+                    company_slug=req.slug, meta=meta.get("meta", {}))
+    console.rule(f"[bold]{meta['kind']}[/bold] → {letter.to_name} <{letter.to_email}>")
+    console.print(f"Subject: {letter.subject}")
+    console.rule()
+    console.print(letter.body, markup=False, highlight=False)
+    console.rule()
+    if dry_run:
+        console.print("[yellow]dry run[/yellow]")
+        return
+    if typer.prompt("Type 'send' to send, anything else to abort").strip() != "send":
+        console.print("[yellow]aborted[/yellow]")
+        raise typer.Exit(code=0)
+    msg_id = mail.send(letter, settings, approved=True)
+    led.log(req.id, f"letter:{meta['kind']}", {"message_id": msg_id, "to": letter.to_email, "subject": letter.subject})
+    new_state = {"reminder": "reminded", "complaint": "complaint-filed", "followup": "answered-partial"}[meta["kind"]]
+    led.transition(req.id, new_state, {"by": "send-letter"})
+    txt.unlink(), meta_path.unlink()
+    console.print(f"[green]sent[/green] {meta['kind']} for #{req.id}, state → {new_state}")
+
+
+@app.command()
+def notify(
+    message: str = typer.Argument(..., help="Text to deliver to the user's chat"),
+    channel: str = typer.Option("whatsapp", "--channel"),
+) -> None:
+    """Deliver a message to the user via the OpenClaw gateway (channel: whatsapp by default)."""
+    import subprocess
+
+    target = subprocess.run(["openclaw", "directory", "self", "--json"], capture_output=True, text=True,
+                            check=False).stdout
+    import re as _re
+    m = _re.search(r"\+?\d{9,15}", target)
+    if not m:
+        console.print("[red]could not determine own chat id from `openclaw directory self`[/red]")
+        raise typer.Exit(code=1)
+    res = subprocess.run(["openclaw", "message", "send", "--channel", channel, "--target", m.group(0),
+                          "--message", message], capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        console.print(f"[red]delivery failed:[/red] {res.stderr.strip()[:300]}")
+        raise typer.Exit(code=1)
+    console.print(f"[green]delivered via {channel}[/green]")
+
+
+@app.command("map")
+def data_map(as_json: bool = typer.Option(False, "--json")) -> None:
+    """Who holds what: everything learned from answers so far."""
+    from auskunft.analysis import label as _label
+
+    led = _ledger()
+    rows = []
+    for r in led.all(include_closed=True):
+        for e in led.events(r.id):
+            an = (e.get("payload") or {}).get("analysis")
+            if an:
+                rows.append({"org": r.org_name, "ref": r.tracking_id, "date": e["ts"][:10],
+                             "score": an.get("score"), "categories": an.get("categories", []),
+                             "recipients": an.get("recipients", []),
+                             "found": {k: v for k, v in an.get("found", {}).items()},
+                             "missing": an.get("missing", [])})
+    if as_json:
+        console.print_json(json.dumps(rows, ensure_ascii=False))
+        return
+    if not rows:
+        console.print("[dim]no answers analysed yet[/dim]")
+        return
+    for row in rows:
+        console.rule(f"[bold]{row['org']}[/bold]  {row['date']}  completeness {row['score']}")
+        if row["categories"]:
+            console.print("categories: " + "; ".join(row["categories"]))
+        if row["recipients"]:
+            console.print("recipients: " + "; ".join(row["recipients"]))
+        for k in ("a_purposes", "d_retention", "g_source", "h_automated"):
+            if k in row["found"]:
+                console.print(f"{_label(k)}: [dim]{row['found'][k][:160]}[/dim]")
+        if row["missing"]:
+            console.print("[yellow]missing: " + ", ".join(_label(k) for k in row["missing"]) + "[/yellow]")

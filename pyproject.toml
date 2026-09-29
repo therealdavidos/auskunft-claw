@@ -10,13 +10,14 @@ dependencies = [
     "rich>=13",
     "holidays>=0.50",
     "python-dotenv>=1.0",
+    "pypdf>=5",
 ]
 
 [project.scripts]
 auskunft = "auskunft.cli:app"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5"]
+dev = ["pytest>=8", "ruff>=0.5", "reportlab>=4"]
 
 [build-system]
 requires = ["hatchling"]
