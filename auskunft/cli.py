@@ -677,3 +677,66 @@ def data_map(as_json: bool = typer.Option(False, "--json")) -> None:
                 console.print(f"{_label(k)}: [dim]{row['found'][k][:160]}[/dim]")
         if row["missing"]:
             console.print("[yellow]missing: " + ", ".join(_label(k) for k in row["missing"]) + "[/yellow]")
+
+
+@app.command()
+def report(
+    out: str = typer.Option("data/report.html", "--out"),
+    today_str: str = typer.Option(None, "--today"),
+    title: str = typer.Option("Auskunfts-Claw", "--title"),
+    open_browser: bool = typer.Option(False, "--open"),
+) -> None:
+    """Write the read-only HTML report (clocks, timelines, data map)."""
+    from datetime import date
+    from pathlib import Path
+
+    from auskunft.report import render
+
+    p = Path(out)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(render(_ledger(), date.fromisoformat(today_str) if today_str else None, title),
+                 encoding="utf-8")
+    console.print(f"[green]report written:[/green] {p}")
+    if open_browser:
+        import subprocess
+
+        subprocess.run(["open", str(p)], check=False)
+
+
+demo_app = typer.Typer(help="Simulation on a separate data dir (set AUSKUNFT_DATA_DIR=data-demo).")
+app.add_typer(demo_app, name="demo")
+
+
+@demo_app.command("seed")
+def demo_seed(sent_on: str = typer.Option("2026-09-27", "--sent-on")) -> None:
+    """Create synthetic requests for the demo scenario."""
+    from datetime import date
+
+    from auskunft.deadline import due_date
+    from auskunft.demo import SCENARIO
+    from auskunft.render import new_tracking_id
+
+    settings, store, led = load_settings(), _store(), _ledger()
+    if "demo" not in str(settings.data_dir):
+        console.print("[red]refusing: AUSKUNFT_DATA_DIR must contain 'demo' (protects the real ledger)[/red]")
+        raise typer.Exit(code=1)
+    day = date.fromisoformat(sent_on)
+    for slug, kind in SCENARIO:
+        c = store.company(slug)
+        r = led.create(slug, c.name, c.email, new_tracking_id(slug, day), state="sent", sent_at=day,
+                       due_at=due_date(day), synthetic=True, notes=f"demo scenario: {kind}")
+        console.print(f"#{r.id} {c.name:32} plays [bold]{kind}[/bold]  {r.tracking_id}")
+
+
+@demo_app.command("fixtures")
+def demo_fixtures(out_dir: str = typer.Option("fixtures/replies", "--out"),
+                  base: str = typer.Option("2026-09-27", "--base")) -> None:
+    """Generate .eml replies (with PDF / encrypted ZIP) addressed to the seeded requests."""
+    from datetime import date
+    from pathlib import Path
+
+    from auskunft.demo import fixtures
+
+    paths = fixtures(_ledger(), Path(out_dir), date.fromisoformat(base))
+    for p in paths:
+        console.print(f"wrote {p}")
