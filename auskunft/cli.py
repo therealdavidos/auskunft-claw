@@ -954,9 +954,11 @@ def overview(
     from auskunft.deadline import days_left
 
     settings = load_settings()
-    if demo and not _demo_complete():
+    from pathlib import Path as _P
+    # replay only if there is no demo at all; a partial demo means the user is stepping through it
+    if demo and not (_P("data-demo") / "ledger.db").is_file():
         if not as_json:
-            console.print("[dim]demo timeline incomplete, replaying …[/dim]")
+            console.print("[dim]no demo data yet, replaying the timeline …[/dim]")
         for n in range(len(_DEMO_STEPS)):
             _run_demo_step_quiet(n)
     serve.ensure_running(settings.data_dir)
