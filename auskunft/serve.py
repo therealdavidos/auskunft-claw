@@ -132,8 +132,14 @@ def _render(demo: bool) -> bytes:
     led = Ledger(data_dir / "ledger.db")
     today = None
     if demo:
+        # the demo clock follows the timeline: "today" is the date of the latest recorded event,
+        # so the dashboard advances step by step while the chat agent narrates the demo
         from datetime import date
-        today = date(2026, 11, 11)
+        row = led.conn.execute("SELECT max(substr(ts, 1, 10)) FROM events").fetchone()
+        try:
+            today = date.fromisoformat(row[0]) if row and row[0] else date(2026, 9, 27)
+        except ValueError:
+            today = date(2026, 11, 11)
     html = render(led, today, "Auskunfts-Claw · Demo" if demo else "Auskunfts-Claw",
                   own_name="Max Mustermann" if demo else settings.from_name)
     led.close()

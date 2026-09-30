@@ -955,7 +955,8 @@ def overview(
 
     settings = load_settings()
     if demo and not _demo_complete():
-        console.print("[dim]demo timeline incomplete, replaying …[/dim]")
+        if not as_json:
+            console.print("[dim]demo timeline incomplete, replaying …[/dim]")
         for n in range(len(_DEMO_STEPS)):
             _run_demo_step_quiet(n)
     serve.ensure_running(settings.data_dir)
