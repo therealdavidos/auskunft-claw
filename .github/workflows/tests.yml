@@ -1,0 +1,13 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: git clone --depth 1 https://github.com/datenanfragen/data vendor/datenanfragen
+      - run: sudo apt-get install -y zip
+      - run: uv sync --extra dev
+      - run: uv run ruff check .
+      - run: uv run pytest -q --cov=auskunft --cov-report=term

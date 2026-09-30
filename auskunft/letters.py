@@ -52,6 +52,8 @@ _SPECIAL = {
 
 def authority_slug_for(address: str, fallback: str = "dendslfd") -> str:
     """Competent German authority for a controller seated at `address`; fallback = user's Land."""
+    if not is_german(address):
+        return fallback
     m = re.search(r"\b(\d{5})\s+([A-Za-zÄÖÜäöüß.\- ]+)", address or "")
     if not m:
         return fallback
@@ -65,9 +67,17 @@ def authority_slug_for(address: str, fallback: str = "dendslfd") -> str:
     return fallback
 
 
+_GERMAN_COUNTRIES = {"deutschland", "germany", "de"}
+
+
 def is_german(address: str) -> bool:
-    a = (address or "").lower()
-    return "deutschland" in a or "germany" in a or bool(re.search(r"\b\d{5}\s+[A-ZÄÖÜ]", address or ""))
+    """German seat: country line says so, or there is no country line and the last line is 'PLZ Ort'."""
+    lines = [ln.strip() for ln in (address or "").splitlines() if ln.strip()]
+    if not lines:
+        return False
+    last = lines[-1].lower()
+    # country line says Germany, or no country line and a German-style "PLZ Ort" last line
+    return last in _GERMAN_COUNTRIES or bool(re.match(r"^\d{5}\s+\S", lines[-1]))
 
 
 def authority_for(store: DataStore, company_address: str, user_authority: str = "dendslfd") -> Authority:

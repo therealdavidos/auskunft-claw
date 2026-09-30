@@ -17,7 +17,7 @@ dependencies = [
 auskunft = "auskunft.cli:app"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "reportlab>=4"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "reportlab>=4"]
 
 [build-system]
 requires = ["hatchling"]
@@ -35,3 +35,11 @@ ignore = ["B008", "DTZ011"]  # typer.Option defaults are the idiom; local dates 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["auskunft"]
+omit = ["auskunft/demo.py"]
+
+[tool.coverage.report]
+skip_covered = false
+show_missing = false

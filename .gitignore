@@ -34,3 +34,4 @@ data-demo/
 
 # keep the example config tracked
 !.env.example
+coverage.xml

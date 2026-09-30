@@ -936,3 +936,7 @@ def purge(
                 d.rmdir()
     console.print(f"{'would delete' if dry_run else 'deleted'} {len(victims)} files, {size // 1024} KiB "
                   f"({'all' if everything else f'older than {older_than} days'})")
+
+
+if __name__ == "__main__":
+    app()
