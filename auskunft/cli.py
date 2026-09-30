@@ -740,8 +740,8 @@ def report(
 
     p = Path(out)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(render(_ledger(), date.fromisoformat(today_str) if today_str else None, title),
-                 encoding="utf-8")
+    p.write_text(render(_ledger(), date.fromisoformat(today_str) if today_str else None, title,
+                        own_name=load_settings().from_name), encoding="utf-8")
     console.print(f"[green]report written:[/green] {p}")
     if open_browser:
         import subprocess
@@ -940,3 +940,69 @@ def purge(
 
 if __name__ == "__main__":
     app()
+
+
+@app.command()
+def overview(
+    demo: bool = typer.Option(False, "--demo", help="Link to the simulated timeline instead"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Start the dashboard if needed and print its link plus a one-line summary (for the chat agent)."""
+    from datetime import date
+
+    from auskunft import serve
+    from auskunft.deadline import days_left
+
+    settings = load_settings()
+    if demo and not _demo_complete():
+        console.print("[dim]demo timeline incomplete, replaying …[/dim]")
+        for n in range(len(_DEMO_STEPS)):
+            _run_demo_step_quiet(n)
+    serve.ensure_running(settings.data_dir)
+    link = serve.url(settings.data_dir, demo=demo)
+    led = _ledger()
+    reqs = led.all(include_closed=False)
+    today = date.today()
+    over = [r for r in reqs if r.effective_due and days_left(r.effective_due, today) < 0]
+    you = [r for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused",
+                                          "answered-partial")]
+    summary = {"open": len(reqs), "overdue": len(over), "needs_you": [r.org_name for r in you],
+               "next_due": min((r.effective_due for r in reqs if r.effective_due), default=None)}
+    if as_json:
+        console.print_json(json.dumps({"url": link, "summary": summary}, default=str, ensure_ascii=False))
+        return
+    console.print(link)
+    console.print(f"[dim]{summary['open']} offen, {summary['overdue']} überfällig, "
+                  f"{len(you)} brauchen dich; nächste Frist {summary['next_due']}[/dim]")
+
+
+@app.command()
+def serve() -> None:
+    """Run the dashboard server in the foreground (the agent uses `overview`, which starts it detached)."""
+    from auskunft import serve as _serve
+
+    console.print(f"serving {_serve.url(load_settings().data_dir)}  (Ctrl-C to stop)")
+    _serve.main()
+
+
+def _demo_complete() -> bool:
+    from pathlib import Path
+
+    from auskunft.ledger import Ledger
+
+    db = Path("data-demo") / "ledger.db"
+    if not db.is_file():
+        return False
+    led = Ledger(db)
+    try:
+        return any(r.state == "complaint-filed" for r in led.all(include_closed=True))
+    finally:
+        led.close()
+
+
+def _run_demo_step_quiet(n: int) -> None:
+    import contextlib
+    import io
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        demo_step(n, as_json=True)

@@ -22,18 +22,42 @@ th{background:#f0efe9;font-weight:600}.st{display:inline-block;padding:2px 8px;b
 .ok{color:#137333}.miss{color:#b00020}.card{background:#fff;border:1px solid #e3e3df;padding:12px 14px;margin:10px 0}
 .syn{color:#888;font-size:12px}.bar{height:8px;background:#eee;border-radius:4px;overflow:hidden;width:160px;display:inline-block;vertical-align:middle}
 .bar i{display:block;height:100%;background:#137333}
+.kpis{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 4px}.kpis div{background:#fff;border:1px solid #e3e3df;padding:10px 14px;min-width:92px}
+.kpis b{display:block;font-size:24px}.kpis span{color:#666;font-size:12px}.scroll{overflow-x:auto}.sum{margin:6px 0;color:#333}
+@media (max-width:600px){body{padding:14px}td,th{font-size:13px;padding:6px}}
 """
 
 
-def render(led: Ledger, today: date | None = None, title: str = "Auskunfts-Claw") -> str:
+def render(led: Ledger, today: date | None = None, title: str = "Auskunfts-Claw",
+           own_name: str = "") -> str:
+    from auskunft.redact import redact
+
     today = today or date.today()
     reqs = led.all(include_closed=True)
     real = sum(1 for r in reqs if not r.synthetic)
-    out = [f"<!doctype html><meta charset='utf-8'><title>{html.escape(title)}</title><style>{_CSS}</style>",
+    def _r(t: str) -> str:
+        return redact(t, own_name=own_name)
+
+    open_states = {"sent", "acknowledged", "clarification", "portal-redirect", "id-requested", "extended",
+                   "answered-partial", "overdue", "reminded", "escalated", "complaint-filed"}
+    n_open = sum(1 for r in reqs if r.state in open_states)
+    n_done = sum(1 for r in reqs if r.state in ("answered-full", "no-data", "closed"))
+    n_over = sum(1 for r in reqs if r.effective_due and days_left(r.effective_due, today) < 0 and r.state in open_states)
+    n_you = sum(1 for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused", "answered-partial"))
+    upcoming = sorted(r.effective_due for r in reqs if r.effective_due and r.state in open_states
+                      and days_left(r.effective_due, today) >= 0)
+    nxt = upcoming[0] if upcoming else None
+    out = [(f"<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+            f"<title>{html.escape(title)}</title><style>{_CSS}</style>"),
            (f"<h1>🦞 {html.escape(title)}</h1><div class='sub'>Stand {today:%d.%m.%Y} · {len(reqs)} Anfragen "
             f"({real} echt, {len(reqs) - real} synthetisch)</div>")]
+    out.append("<div class='kpis'>"
+               f"<div><b>{n_open}</b><span>offen</span></div><div><b>{n_done}</b><span>beantwortet</span></div>"
+               f"<div><b class='{'neg' if n_over else ''}'>{n_over}</b><span>überfällig</span></div>"
+               f"<div><b>{n_you}</b><span>brauchen dich</span></div>"
+               f"<div><b>{nxt.strftime('%d.%m.') if nxt else '–'}</b><span>nächste Frist</span></div></div>")
     # clocks
-    out.append("<h2>Anfragen und Fristen</h2><table><tr><th>#</th><th>Organisation</th><th>Status</th>"
+    out.append("<h2>Anfragen und Fristen</h2><div class='scroll'><table><tr><th>#</th><th>Organisation</th><th>Status</th>"
                "<th>Gesendet</th><th>Frist</th><th>Tage</th><th>Referenz</th></tr>")
     for r in reqs:
         due = r.effective_due
@@ -46,7 +70,7 @@ def render(led: Ledger, today: date | None = None, title: str = "Auskunfts-Claw"
                    f"<td class='days {cls}'>{left}</td><td><code>{r.tracking_id}</code></td></tr>"
                    if r.sent_at and due else
                    f"<tr><td>{r.id}</td><td>{html.escape(r.org_name)}</td><td>{r.state}</td><td colspan=4></td></tr>")
-    out.append("</table>")
+    out.append("</table></div>")
     # timelines
     out.append("<h2>Verlauf</h2>")
     for r in reqs:
@@ -78,16 +102,19 @@ def render(led: Ledger, today: date | None = None, title: str = "Auskunfts-Claw"
         score = an.get("score", 0)
         out.append(f"<div class='card'><b>{html.escape(r.org_name)}</b> · Antwort {ts} · Vollständigkeit "
                    f"<span class='bar'><i style='width:{int(score * 100)}%'></i></span> {int(score * 100)}%")
+        if an.get("summary"):
+            out.append(f"<div class='sum'>{html.escape(an['summary'])}</div>")
         if an.get("categories"):
-            out.append("<div><b>Datenkategorien:</b> " + "; ".join(html.escape(c) for c in an["categories"]) + "</div>")
+            out.append("<div><b>Datenkategorien:</b> " + "; ".join(html.escape(_r(c)) for c in an["categories"]) + "</div>")
         if an.get("recipients"):
-            out.append("<div><b>Empfänger:</b> " + "; ".join(html.escape(c) for c in an["recipients"]) + "</div>")
+            out.append("<div><b>Empfänger:</b> " + "; ".join(html.escape(_r(c)) for c in an["recipients"]) + "</div>")
         out.append("<table><tr><th>Art. 15 Punkt</th><th>Beleg</th></tr>")
         for key in ITEMS:
             if key in an.get("found", {}):
-                out.append(f"<tr><td class='ok'>✓ {label(key)}</td><td>{html.escape(an['found'][key][:200])}</td></tr>")
+                out.append(f"<tr><td class='ok'>✓ {label(key)}</td><td>{html.escape(_r(an['found'][key])[:200])}</td></tr>")
             elif key in an.get("missing", []):
-                out.append(f"<tr><td class='miss'>✗ {label(key)}</td><td class='miss'>fehlt → Nachfrage</td></tr>")
+                why = an.get("reasons", {}).get(key) or "fehlt"
+                out.append(f"<tr><td class='miss'>✗ {label(key)}</td><td class='miss'>{html.escape(why)} → Nachfrage</td></tr>")
         out.append("</table></div>")
     out.append("<p class='syn'>Alle Fristen nach Art. 12 Abs. 3 DSGVO, berechnet nach VO (EWG) 1182/71. "
                "Kontaktdaten und Vorlagen: datenanfragen.de (CC0).</p>")
