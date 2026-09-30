@@ -226,3 +226,25 @@ def mini_vendor(tmp_path_factory) -> Path:
 def mini_env(env, mini_vendor, monkeypatch) -> Path:
     monkeypatch.setenv("AUSKUNFT_VENDOR_DIR", str(mini_vendor))
     return env
+
+
+def make_pdf(lines: list[str]) -> bytes:
+    """A one-page text PDF (reportlab is a dev dependency)."""
+    import io
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    for i, line in enumerate(lines):
+        c.drawString(50, 800 - 16 * i, line)
+    c.save()
+    return buf.getvalue()
+
+
+def envelope(mid: str, frm: str, subject: str, date: str = "2026-10-02 10:00+00:00",
+             name: str = "", to: str = "max.mustermann@example.org") -> dict:
+    """An envelope shaped like `himalaya envelope list/search --json` output."""
+    return {"id": mid, "subject": subject, "date": date, "from": [{"name": name, "email": frm}],
+            "to": [{"name": "", "email": to}], "has-attachment": False}
