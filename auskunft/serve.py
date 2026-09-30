@@ -2,9 +2,11 @@
 link the agent sends never goes stale. Only two paths exist, both behind a random token:
   /r/<token>/        the real ledger
   /r/<token>/demo    the simulated timeline (data-demo)
-Everything else is 404. Bound to the LAN so a phone on the same network can open it; the token is the
-only credential, so the link must not be shared. Set AUSKUNFT_PUBLIC_HOST to advertise another host
-(e.g. a Tailscale name)."""
+Everything else is 404. With Tailscale Serve in front (`tailscale serve --bg 8765`) the server binds to
+loopback and the link is https://<machine>.<tailnet>.ts.net/…, reachable only from your own devices on
+any network. Without Tailscale it binds to the LAN and the phone must share the Wi-Fi. The token is the
+only credential inside that boundary, so the link must not be shared.
+Overrides: AUSKUNFT_PUBLIC_URL (base URL), AUSKUNFT_BIND, AUSKUNFT_PUBLIC_HOST, AUSKUNFT_PORT."""
 
 from __future__ import annotations
 
@@ -18,6 +20,50 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 PORT = int(os.environ.get("AUSKUNFT_PORT", "8765"))
+TAILSCALE_BINS = ("tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/local/bin/tailscale",
+                  "/opt/homebrew/bin/tailscale")
+
+
+def _tailscale(*args: str) -> str | None:
+    for b in TAILSCALE_BINS:
+        try:
+            res = subprocess.run([b, *args], capture_output=True, text=True, check=False, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if res.returncode == 0:
+            return res.stdout
+    return None
+
+
+def tailscale_base() -> str | None:
+    """https://<machine>.<tailnet>.ts.net if `tailscale serve` proxies to our port, else None."""
+    status = _tailscale("serve", "status", "--json")
+    if not status or str(PORT) not in status:
+        return None
+    me = _tailscale("status", "--json")
+    if not me:
+        return None
+    import json
+
+    name = (json.loads(me).get("Self") or {}).get("DNSName", "").rstrip(".")
+    return f"https://{name}" if name else None
+
+
+def public_base() -> str:
+    """Base URL the link uses: explicit override, then Tailscale Serve, then the LAN address."""
+    if os.environ.get("AUSKUNFT_PUBLIC_URL"):
+        return os.environ["AUSKUNFT_PUBLIC_URL"].rstrip("/")
+    ts = tailscale_base()
+    if ts:
+        return ts
+    return f"http://{lan_host()}:{PORT}"
+
+
+def bind_host() -> str:
+    """Loopback when a proxy (Tailscale Serve) fronts us, LAN otherwise; AUSKUNFT_BIND overrides."""
+    if os.environ.get("AUSKUNFT_BIND"):
+        return os.environ["AUSKUNFT_BIND"]
+    return "127.0.0.1" if (os.environ.get("AUSKUNFT_PUBLIC_URL") or tailscale_base()) else "0.0.0.0"
 
 
 def token(data_dir: Path) -> str:
@@ -52,7 +98,7 @@ def lan_host() -> str:
 
 
 def url(data_dir: Path, demo: bool = False) -> str:
-    return f"http://{lan_host()}:{PORT}/r/{token(data_dir)}/{'demo' if demo else ''}"
+    return f"{public_base()}/r/{token(data_dir)}/{'demo' if demo else ''}"
 
 
 def running() -> bool:

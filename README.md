@@ -97,6 +97,11 @@ uv run auskunft check && uv run auskunft ls             # replies and clocks
 Optional model judge: put a build.nvidia.com key into `.env` as `AUSKUNFT_LLM_KEY`. Without it the
 heuristic runs.
 
+Dashboard: `uv run auskunft overview` starts a small read-only server and prints a token link; the chat
+agent sends the same link when you ask "Übersicht?". For access from anywhere, run Tailscale on the
+machine and the phone and `tailscale serve --bg 8765`, then `uv run auskunft serve --restart --background`;
+the link becomes `https://<machine>.<tailnet>.ts.net/r/<token>/` and the server binds to loopback.
+
 ### As an OpenClaw agent
 
 ```bash

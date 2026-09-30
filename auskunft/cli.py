@@ -977,12 +977,35 @@ def overview(
 
 
 @app.command()
-def serve() -> None:
-    """Run the dashboard server in the foreground (the agent uses `overview`, which starts it detached)."""
+def serve(
+    restart: bool = typer.Option(False, "--restart", help="Stop a running dashboard server first"),
+    foreground: bool = typer.Option(True, "--foreground/--background"),
+) -> None:
+    """Run the dashboard server. After enabling Tailscale Serve, use `--restart` so it rebinds to loopback."""
+    import os
+    import signal
+    import subprocess
+
     from auskunft import serve as _serve
 
-    console.print(f"serving {_serve.url(load_settings().data_dir)}  (Ctrl-C to stop)")
-    _serve.main()
+    settings = load_settings()
+    if restart:
+        pids = subprocess.run(["pgrep", "-f", "auskunft.serve"], capture_output=True, text=True,
+                              check=False).stdout.split()
+        for pid in pids:
+            if pid.isdigit() and int(pid) != os.getpid():
+                os.kill(int(pid), signal.SIGTERM)
+        import time
+        for _ in range(30):
+            if not _serve.running():
+                break
+            time.sleep(0.1)
+    console.print(f"bind {_serve.bind_host()}:{_serve.PORT} → {_serve.url(settings.data_dir)}")
+    if foreground:
+        _serve.main()
+    else:
+        _serve.ensure_running(settings.data_dir)
+        console.print("[green]running in background[/green]")
 
 
 def _demo_complete() -> bool:
