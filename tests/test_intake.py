@@ -10,6 +10,15 @@ def test_priority_id_over_ack():
     assert s == "id-requested"
 
 
+def test_customer_number_question_is_clarification_not_id():
+    s, _ = classify("Re: Auskunft", "Zur Identifikation benötigen wir noch Ihre Kundennummer und Ihr Geburtsdatum.")
+    assert s == "clarification"
+    s, _ = classify("Re", "To verify your identity please confirm the e-mail address on your account.")
+    assert s == "clarification"
+    s, _ = classify("Re", "Please upload a photo ID (passport or ID card) to verify your identity.")
+    assert s == "id-requested"
+
+
 def test_extension():
     s, _ = classify("Re: Auskunft", "Wir benötigen eine Fristverlängerung um zwei weitere Monate.")
     assert s == "extended"

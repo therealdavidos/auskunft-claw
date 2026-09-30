@@ -26,9 +26,22 @@ from auskunft.mail import himalaya_cmd
 REF_RE = re.compile(r"AK-\d{8}-[A-Z0-9]{4}-[0-9a-f]{4}")
 
 # (state, patterns). First hit in this order wins. Case-insensitive, German + English.
+# A legal identity check (Art. 12(6)) means a document is demanded. Questions for a customer number,
+# account e-mail or date of birth are ordinary clarifications and get different advice.
+_ID_DOCUMENT = re.compile(
+    r"ausweis|reisepass|personalausweis|passport|id card|identity (?:document|card)|photo ?id|"
+    r"government[- ]issued|lichtbild|kopie ihres|copy of your (?:id|passport)|selfie|video[- ]ident",
+    re.IGNORECASE)
+
 RULES: list[tuple[str, tuple[str, ...]]] = [
-    ("id-requested", (r"ausweis", r"identit[äa]t", r"legitimation", r"identifi(?:kation|cation)",
-                      r"proof of identity", r"verify (?:your )?identity", r"nachweis (?:ihrer|der) identit")),
+    ("id-requested", (r"ausweis", r"reisepass", r"passport", r"\bid card", r"identity (?:document|card)",
+                      r"photo ?id", r"government[- ]issued", r"lichtbild", r"video[- ]ident", r"selfie",
+                      r"kopie ihres", r"copy of your (?:id|passport)")),
+    ("clarification", (r"identit[äa]t", r"legitimation", r"identifi(?:kation|cation)", r"verify",
+                       r"best[äa]tigen sie", r"kundennummer", r"customer (?:number|id)", r"geburtsdatum",
+                       r"date of birth", r"r[üu]ckfrage", r"ben[öo]tigen wir (?:noch|folgende|weitere)",
+                       r"bitte teilen sie uns", r"please (?:provide|confirm|let us know)",
+                       r"could you (?:please )?(?:provide|confirm)", r"weitere (?:angaben|informationen)")),
     ("extended", (r"fristverl[äa]ngerung", r"zwei weitere monate", r"verl[äa]ngern wir", r"extend(?:ed|ing)? the (?:deadline|period)",
                   r"additional (?:two|2) months")),
     ("no-data", (r"keine (?:personenbezogenen )?daten", r"nicht gespeichert", r"liegen (?:uns )?keine",
@@ -39,8 +52,6 @@ RULES: list[tuple[str, tuple[str, ...]]] = [
                           r"datenauskunft erteilen wir", r"please find (?:your|the) data")),
     ("portal-redirect", (r"portal", r"kundenkonto", r"self-?service", r"onetrust", r"privacy ?center",
                          r"[üu]ber (?:das|unser) formular", r"log ?in", r"einloggen", r"anmelden und")),
-    ("clarification", (r"r[üu]ckfrage", r"ben[öo]tigen wir (?:noch|folgende)", r"bitte teilen sie uns",
-                       r"please (?:provide|confirm|let us know)", r"could you (?:please )?(?:provide|confirm)")),
     ("acknowledged", (r"eingegangen", r"erhalten", r"received", r"ticket", r"vorgang", r"bearbeit",
                       r"we(?:'| a)re looking into", r"automatische antwort", r"auto-?reply", r"out of office",
                       r"abwesenheit", r"thank you for (?:contacting|your (?:e-?mail|request))")),
@@ -178,11 +189,31 @@ def process_reply(settings: Settings, led: Ledger, req: Request, env: dict, text
         led.log(req.id, "reply:received", payload, ts=ts)
         if RANK.get(state, 0) > RANK.get(req.state, 0):
             fields = {}
+            note = {"by": "intake", "message_id": mid}
             if state == "extended" and req.sent_at:
-                # Art. 12(3) s. 2: up to two further months when notified within the first month
-                fields["extended_until"] = extended_due_date(req.sent_at, 2)
-            led.transition(req.id, state, {"by": "intake", "message_id": mid}, ts=ts, **fields)
+                # Art. 12(3) s. 2: two further months, but only if the notice arrives within the first
+                # month and gives reasons. A late or unreasoned notice does not move the deadline.
+                notice = _notice_date(env.get("date")) or date.today()
+                reasons = bool(re.search(r"grund|komplex|umfang|anzahl|vielzahl|because|due to|complex|"
+                                         r"volume|number of requests", text, re.IGNORECASE))
+                if notice <= (req.due_at or notice) and reasons:
+                    fields["extended_until"] = extended_due_date(req.sent_at, 2)
+                    note["extension"] = "accepted"
+                else:
+                    state = "acknowledged"  # keep the original clock running
+                    note["extension"] = "rejected: " + ("late notice" if notice > (req.due_at or notice) else "no reasons given")
+                    payload["extension_rejected"] = note["extension"]
+            led.transition(req.id, state, note, ts=ts, **fields)
     return state, pat, payload
+
+
+def _notice_date(date_header: str | None) -> date | None:
+    from email.utils import parsedate_to_datetime
+
+    try:
+        return parsedate_to_datetime(date_header).date() if date_header else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _event_ts(date_header: str | None) -> str | None:
