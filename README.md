@@ -1,5 +1,8 @@
 # Auskunfts-Claw
 
+[![tests](https://github.com/therealdavidos/auskunft-claw/actions/workflows/tests.yml/badge.svg)](https://github.com/therealdavidos/auskunft-claw/actions/workflows/tests.yml)
+![coverage](badges/coverage.svg)
+
 **Your data rights, enforced while you sleep.**
 
 Every company you have ever dealt with holds data about you. Under GDPR Art. 15 you can ask what, why, and who they gave it to. Almost nobody does, because it means dozens of letters, deadlines and messy replies. Auskunfts-Claw is a long-running agent that does it for you: it finds the companies, drafts each request, sends it once you approve, tracks the one-month clock per company, reads every reply, chases the overdue ones, drafts the complaint to the regulator when the law allows, and builds a map of who holds what about you. It runs on your own machine on a local model, because the answers it collects are the most sensitive documents you own.
@@ -76,6 +79,11 @@ data/          ledger and attachments (gitignored, sensitive)
 drafts/        rendered letters (gitignored)
 demo/          video material (real/ is gitignored)
 ```
+
+## Tests
+`make test` runs the suite, `make coverage` refreshes `badges/coverage.svg`. Core modules (deadline
+arithmetic, ledger, letters, rendering, analysis, redaction) are at 86–100 % line coverage; the
+thin CLI layer and the HTML report pull the total down. The demo replay test guards the video.
 
 ## Licence
 MIT for this code. datenanfragen.de data is CC0.
