@@ -86,8 +86,6 @@ def test_model_verdict_verifies_quotes(model):
     assert an["reasons"]["c_recipients"] == "nicht konkret" and an["judge"] == J.MODEL
 
 
-@pytest.mark.xfail(strict=True, raises=AttributeError, reason="BUG: a non-object item in the model's "
-                   "JSON (e.g. \"g_source\": \"n/a\") raises AttributeError out of judge(), crashing intake")
 def test_model_item_that_is_not_an_object(model):
     model({"summary": "", "items": {"g_source": "n/a"}})
     assert J.judge(ANSWER).items["g_source"]["present"] is False

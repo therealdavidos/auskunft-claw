@@ -61,8 +61,6 @@ def tick_json(runner, *args: str) -> dict:
     return json.loads(out[out.index("{"):])
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: tick --today --json prints the 'time travel' banner "
-                   "before the JSON document, so the output is not valid JSON")
 def test_tick_today_json_is_pure_json(clocks, runner):
     cli_json(runner, "tick", "--today", "2026-09-05", "--json")
 

@@ -107,10 +107,15 @@ def judge(text: str, heuristic: Answer | None = None) -> Verdict:
         raw = _chat(text)
     except Exception:  # noqa: BLE001 - network/model errors → heuristic, never a crash
         return _from_heuristic(heuristic)
+    if not isinstance(raw, dict):
+        return _from_heuristic(heuristic)
+    items = raw.get("items") if isinstance(raw.get("items"), dict) else {}
     v = Verdict(model=MODEL, summary=str(raw.get("summary", ""))[:300])
     norm_text = _norm(text)
     for key in ITEMS:
-        it = (raw.get("items") or {}).get(key) or {}
+        it = items.get(key)
+        if not isinstance(it, dict):  # model returned "n/a", a list, null …: treat as not stated
+            it = {}
         quote = str(it.get("quote") or "").strip()
         verified = bool(quote) and _norm(quote)[:120] in norm_text
         present = bool(it.get("present")) and (verified or not quote)

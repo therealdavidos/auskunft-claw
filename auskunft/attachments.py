@@ -53,10 +53,20 @@ def any_text(name: str, data: bytes) -> str:
     return ""
 
 
+def safe_name(name: str) -> str:
+    """Attachment filenames come from strangers: keep only the last path component, no dotfiles."""
+    base = Path(str(name).replace("\\", "/")).name.strip().lstrip(".")
+    return base or "attachment.bin"
+
+
 def unpack(name: str, data: bytes, out_dir: Path, password: str | None = None) -> list[tuple[str, str]]:
     """Save the attachment and return [(filename, extracted_text)], recursing into ZIPs."""
+    name = safe_name(name)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / name).write_bytes(data)
+    target = (out_dir / name).resolve()
+    if out_dir.resolve() not in target.parents:
+        raise ValueError(f"refusing to write outside {out_dir}: {name}")
+    target.write_bytes(data)
     if Path(name).suffix.lower() != ".zip":
         return [(name, any_text(name, data))]
     results: list[tuple[str, str]] = []

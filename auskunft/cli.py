@@ -456,7 +456,7 @@ def tick(
 
     led = _ledger()
     today = date.fromisoformat(today_str) if today_str else date.today()
-    if today_str:
+    if today_str and not as_json:
         console.print(f"[magenta]time travel: today = {today:%d.%m.%Y}[/magenta]")
     overdue, soon, report, escalate_due = [], [], [], []
     for r in led.all(include_closed=False):

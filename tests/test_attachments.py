@@ -105,9 +105,16 @@ def test_encrypted_zip_wrong_password(tmp_path, locked_zip):
     assert not (tmp_path / "locked" / "auskunft.txt").exists()
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: unpack() writes out_dir / <attachment filename> unsanitised; "
-                   "a mail attachment named '../x' is written outside the reply directory")
 def test_attachment_name_cannot_escape_out_dir(tmp_path):
     out = tmp_path / "replies" / "AK-1" / "attachments"
     unpack("../../escaped.txt", b"x", out)
     assert not (tmp_path / "replies" / "escaped.txt").exists()
+
+
+def test_safe_name_strips_paths_and_dotfiles():
+    from auskunft.attachments import safe_name
+    assert safe_name("../../etc/passwd") == "passwd"
+    assert safe_name("..\\..\\win.ini") == "win.ini"
+    assert safe_name("/abs/path/report.pdf") == "report.pdf"
+    assert safe_name(".hidden") == "hidden"
+    assert safe_name("..") == "attachment.bin"
