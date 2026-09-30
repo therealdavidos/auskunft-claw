@@ -112,8 +112,10 @@ def ensure_running(data_dir: Path) -> None:
     if running():
         return
     log = open(data_dir / "dashboard.log", "ab")  # noqa: SIM115 - handed to the child process
+    # decide the bind address here: the detached child may not be able to query Tailscale itself
+    env = {**os.environ, "AUSKUNFT_BIND": bind_host()}
     subprocess.Popen([sys.executable, "-m", "auskunft.serve"], stdout=log, stderr=log,
-                     start_new_session=True, cwd=os.getcwd(), env=os.environ.copy())
+                     start_new_session=True, cwd=os.getcwd(), env=env)
     for _ in range(30):
         if running():
             return
@@ -169,7 +171,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((bind_host(), PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":
