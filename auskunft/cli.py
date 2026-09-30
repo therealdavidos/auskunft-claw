@@ -333,8 +333,9 @@ def facts(
     mailbox: str = typer.Option("[Gmail]/All Mail", "--mailbox"),
     max_messages: int = typer.Option(6, "--max"),
     by_domain: bool = typer.Option(False, "--domain", help="Treat SLUG as a sender domain"),
+    addresses: bool = typer.Option(False, "--addresses", help="Also guess postal addresses (noisy)"),
 ) -> None:
-    """Extract identification facts (customer numbers, address) from mails of that company."""
+    """Extract identification facts (account e-mail, customer/booking numbers) from mails of that company."""
     from auskunft.discover import facts_for
 
     settings = load_settings()
@@ -346,9 +347,9 @@ def facts(
         console.print("account e-mail(s): " + ", ".join(sorted(f.account_emails)))
     for label, vals in f.numbers.items():
         console.print(f"{label}: " + ", ".join(sorted(vals)))
-    for a in sorted(f.addresses):
-        console.print(f"address: {a}")
-    if not f.numbers and not f.addresses:
+    for a in sorted(f.addresses) if addresses else []:
+        console.print(f"address (guess): {a}")
+    if not f.numbers and not (addresses and f.addresses):
         console.print("[dim]no customer numbers or addresses found in these mails[/dim]")
 
 

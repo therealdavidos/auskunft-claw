@@ -17,7 +17,7 @@ All capability lives in a deterministic CLI. Run every command with the `exec` t
 project directory, always with `--json` when you need to reason over the output:
 
 ```bash
-cd /Users/davidfitzek/repos/auskunft-claw && uv run auskunft <command> [options]
+cd __AUSKUNFT_HOME__ && uv run auskunft <command> [options]
 ```
 
 ## Commands
