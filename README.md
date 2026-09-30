@@ -5,85 +5,161 @@
 
 **Your data rights, enforced while you sleep.**
 
-Every company you have ever dealt with holds data about you. Under GDPR Art. 15 you can ask what, why, and who they gave it to. Almost nobody does, because it means dozens of letters, deadlines and messy replies. Auskunfts-Claw is a long-running agent that does it for you: it finds the companies, drafts each request, sends it once you approve, tracks the one-month clock per company, reads every reply, chases the overdue ones, drafts the complaint to the regulator when the law allows, and builds a map of who holds what about you. It runs on your own machine on a local model, because the answers it collects are the most sensitive documents you own.
+Every company you have ever dealt with holds data about you. Under GDPR Art. 15 you may ask what,
+why, and whom they gave it to. Almost nobody does, because it means dozens of letters, dozens of
+deadlines and messy replies. Auskunfts-Claw is a long-running agent that does it for you: it finds
+the companies in your mailbox, drafts each request, sends it once you approve, tracks the one-month
+clock per company, reads every reply, judges whether the answer is legally complete, chases the
+overdue ones, and drafts the complaint to the regulator when the law allows. Out of the answers
+grows a map of who holds what about you.
 
-Entry for the NVIDIA Berlin Claw Agent Challenge (Oct 2026). Built on OpenClaw / NemoClaw.
+Entry for the **NVIDIA Berlin Claw Agent Challenge** (October 2026). Built on OpenClaw with NVIDIA
+Nemotron 3 Super via [build.nvidia.com](https://build.nvidia.com), mail through OpenClaw's bundled
+`himalaya` skill, chat through WhatsApp.
 
-## Status
-- Day 1 (Sept 25–27): `discover`, `facts`, `lookup`, `draft`, `show`, `send` (approval-gated, via himalaya), `ls`, deadline engine, ledger. Five real requests sent.
-- Day 2 (Sept 27): `check` (reply intake + rule classifier), `tick` (daily clock), OpenClaw skill (`skill/SKILL.md`, `make install-skill`), two OpenClaw cron jobs (`auskunft-check` every 30 min, `auskunft-tick` daily 09:00 Berlin).
+## For the judges: what is real, what is simulated
 
-## What is ours and what is OpenClaw's
-We write as little as possible. OpenClaw / NemoClaw provides the runtime, the local model, the scheduler
-(cron/heartbeat), memory, chat channels for approvals, and mail via the bundled **himalaya** skill.
-Our code is only the deterministic part no model should improvise:
-datenanfragen.de lookup, letter rendering, deadline arithmetic, the ledger/state machine,
-reply classification rules, and the data map. Everything is a CLI command; the OpenClaw skill wraps it.
+**Real, running since 27 Sept 2026.** Five Art. 15 requests went out from the author's own mailbox to
+AZ Direct, Schufa, Flixbus, Bolt and Wise, all targets picked by the agent from the mailbox. Three
+acknowledged within 48 hours; the ledger clocks run to 27 Oct. An OpenClaw cron job checks for replies
+every 30 minutes, a daily job checks deadlines, both on Nemotron, both silent unless something needs
+a human. The user asks on WhatsApp "did Wise reply, what did they write?" and gets the answer.
 
-## Quick start
+**Simulated, clearly labelled.** A 30-day statutory period cannot elapse inside a one-week build.
+`./demo.sh` (or "zeig mir die Demo" in chat) replays a 45-day timeline on a separate data directory
+with the persona Max Mustermann: nine reply archetypes as `.eml` fixtures fed through the *real*
+intake, an encrypted ZIP and a PDF unpacked, the model judge flagging an incomplete answer, the
+follow-up letter, day-31 reminders, a day-45 complaint routed to the competent Bavarian authority.
+Nothing is mailed in the demo; letters are logged as sent and marked simulated.
+
+## One-sentence impact
+
+Anyone with an e-mail address can find out which companies hold their data and force complete
+answers, without writing a single letter or tracking a single deadline.
+
+## How it works
+
+```
+mailbox ──discover──► targets ──draft──► [you: "send"] ──himalaya──► company
+                                                                        │
+   WhatsApp ◄──notify── agent ◄──cron 30 min── check ◄──IMAP──── reply ◄┘
+                          │                     │
+                          │              classify (rules) ──► ledger state machine
+                          │                     │
+                          │              answer? ──► Nemotron judge vs Art. 15 rubric ──► gaps
+                          │                                                            │
+                          └── daily tick: overdue → reminder → complaint     follow-up ◄┘
+```
+
+Division of labour, on purpose:
+
+| Deterministic code (this repo) | Model (Nemotron via OpenClaw) |
+|---|---|
+| contact lookup in the datenanfragen.de database | choosing targets and explaining them |
+| letter rendering from CC0 templates, DE/EN | holding the approval conversation |
+| deadline arithmetic: Art. 12(3), EU Reg. 1182/71, holidays | summarising replies in plain language |
+| reply classification into 16 states | judging an answer against the Art. 15 rubric |
+| tracking-reference and sender matching | wording follow-ups and the WhatsApp reports |
+| attachment unpacking, redaction, retention | |
+
+The judge is the one place the model decides something: it reads an answer against the ten Art. 15
+items (named recipients per CJEU C-154/21, retention as period or criteria, a real copy per
+C-487/21) and returns a verdict per item with a quote. Code verifies every quote against the text;
+no verified quote, no credit. If the endpoint is unreachable the regex heuristic takes over.
+
+## Legal rules encoded
+
+- One month from receipt, same calendar day next month, end-of-month clamp, next working day on
+  weekends and German public holidays (EDPB Guidelines 01/2022 §160).
+- Extension by up to two months only if notified within the first month and with reasons; a late
+  or unreasoned "Fristverlängerung" leaves the request overdue.
+- Identity checks only on justified doubt; a mere clarification question is not an ID demand and is
+  classified separately. The agent never sends, stores or attaches an ID document.
+- Complaint under Art. 77 goes to the authority of the controller's seat, derived from the address;
+  all 16 Länder authorities plus BfDI come from the datenanfragen.de list.
+- One request per controller. Reminders after the deadline, complaints 14 days after a reminder.
+
+## Run it
+
 ```bash
 uv sync
-brew install himalaya            # mail transport (OpenClaw bundled skill)
-cp .env.example .env             # your name and address as the companies know you
+brew install himalaya                                   # mail transport; Linux: cargo/brew
 git clone --depth 1 https://github.com/datenanfragen/data vendor/datenanfragen
-uv run auskunft lookup deutsche-bahn
-uv run auskunft draft deutsche-bahn
-uv run auskunft send deutsche-bahn   # shows the mail, asks for approval, sends via himalaya
-uv run auskunft ls                   # ledger with running clocks
+cp .env.example .env                                    # your name and postal address
+# himalaya: see docs/setup-mail.md (Gmail app password, IMAP/SMTP)
+uv run auskunft discover --known-only                   # who do you deal with?
+uv run auskunft draft schufa --polite && uv run auskunft show schufa
+uv run auskunft send schufa                             # asks you to type `send`
+uv run auskunft check && uv run auskunft ls             # replies and clocks
+./demo.sh                                               # the simulated 45-day timeline
 ```
 
-## himalaya setup (Gmail, app password, macOS Keychain)
-Store the 16-character app password in the Keychain once:
+Optional model judge: put a build.nvidia.com key into `.env` as `AUSKUNFT_LLM_KEY`. Without it the
+heuristic runs.
+
+### As an OpenClaw agent
+
 ```bash
-security add-generic-password -a "deine.adresse@gmail.com" -s himalaya-gmail -w
+make install-skill                                      # copies skill/SKILL.md into the workspace
+openclaw cron add --name auskunft-check --every 30m --session isolated --announce --channel whatsapp \
+  --to +49… --message 'Use the auskunft skill. Run: cd <repo> && uv run auskunft check --json . If empty reply NO_REPLY …'
+openclaw cron add --name auskunft-tick --cron "0 9 * * *" --tz Europe/Berlin --session isolated --announce …
 ```
-Then `~/.config/himalaya/config.toml`:
-```toml
-[accounts.gmail]
-email = "deine.adresse@gmail.com"
-display-name = "Vorname Nachname"
-default = true
 
-backend.type = "imap"
-backend.host = "imap.gmail.com"
-backend.port = 993
-backend.encryption.type = "tls"
-backend.login = "deine.adresse@gmail.com"
-backend.auth.type = "password"
-backend.auth.cmd = "security find-generic-password -a deine.adresse@gmail.com -s himalaya-gmail -w"
+Model provider used for the submission: OpenClaw custom provider `nvidia-build` pointing at
+`https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3-super-120b-a12b`. In our OpenClaw
+version (2026.3.13) the built-in NVIDIA provider drops the organisation prefix from model ids; the
+custom provider id works around that. Nemotron 3.5 Lightning ignored tool calls in this setup,
+Nemotron 3 Super follows them reliably.
 
-message.send.backend.type = "smtp"
-message.send.backend.host = "smtp.gmail.com"
-message.send.backend.port = 465
-message.send.backend.encryption.type = "tls"
-message.send.backend.login = "deine.adresse@gmail.com"
-message.send.backend.auth.type = "password"
-message.send.backend.auth.cmd = "security find-generic-password -a deine.adresse@gmail.com -s himalaya-gmail -w"
-```
-Check: `himalaya account check` then `himalaya envelope list`.
+## CLI
 
-## Principles
-- Nothing is sent without a human typing `send`.
-- No ID documents, ever, in the agent's storage or in git.
-- Deadlines are computed by code (Art. 12(3), EU Regulation 1182/71 month rule, German holidays), not guessed by a model.
-- Replies are untrusted input.
-- Contact data and letter templates come from [datenanfragen.de](https://github.com/datenanfragen/data) (CC0). Thank you.
+| Command | Purpose |
+|---|---|
+| `discover`, `facts` | mailbox scan → organisations; account numbers from a company's mails |
+| `lookup`, `draft`, `show`, `send` | contact, letter (DE/EN, `--polite`), preview, approval-gated send |
+| `ls`, `replies`, `map`, `report` | clocks, what companies wrote (redacted), who holds what, HTML report |
+| `check`, `tick` | reply intake and classification; daily deadline check (`--today` for time travel) |
+| `remind`, `escalate`, `followup`, `send-letter` | reminder, Art. 77 complaint, gap follow-up |
+| `purge`, `notify`, `demo` | retention, WhatsApp delivery, simulated timeline steps |
+
+## Limitations we want you to know about
+
+- **No sandbox on macOS.** The OpenClaw `exec` tool runs as the user; the allowlist settings we
+  configured are not enforced by this OpenClaw version. The skill instructs the model to run only
+  `uv run auskunft …` and `himalaya`, every outgoing mail needs a typed approval, and inbound mail is
+  treated as data, never as instructions. On NemoClaw (Linux) the OpenShell sandbox closes this gap;
+  we built and tested on a Mac.
+- **Tool output reaches the model endpoint.** Ledger rows, reply excerpts and judge input are part of
+  the agent's context and therefore go to build.nvidia.com. Excerpts and the map are redacted first
+  (IBAN, card and phone numbers, birth dates, addresses, third-party e-mails, the user's name). A
+  local model via Ollama avoids the round trip entirely; `AUSKUNFT_LLM_BASE` points the judge there.
+- **Storage is plain files** under `data/`, gitignored, protected by the OS disk encryption. `purge`
+  deletes stored replies older than 30 days; the daily tick reminds you.
+- **Onboarding still uses `.env`** for name and address. The chat flow asks for them once; a small UI
+  is roadmap, not shipped.
+- **Discovery reads headers, not bodies**: sender, subject, date of the last 4,000 mails. Bodies are
+  read only for a chosen company (`facts`) or for replies matching an open request.
+
+## Roadmap
+
+Art. 17 deletion round from the map · NemoClaw/OpenShell deployment · encryption at rest ·
+chat-based onboarding replacing `.env` · Art. 20 portability exports into the map · a second language
+pass for letters to authorities.
 
 ## Layout
+
 ```
-auskunft/      package (cli, data loader, renderer, deadline math, ledger, himalaya bridge)
-tests/         pytest
-docs/          decision record, sketch, feasibility, day plans
-vendor/        datenanfragen.de data clone (gitignored)
-data/          ledger and attachments (gitignored, sensitive)
-drafts/        rendered letters (gitignored)
-demo/          video material (real/ is gitignored)
+auskunft/    cli, data loader, renderer, letters, deadline, ledger, intake, analysis, judge, redact, report, demo
+skill/       OpenClaw SKILL.md (installed with `make install-skill`)
+tests/       pytest (43 tests; CI on GitHub Actions)
+docs/        decision record, sketches, feasibility research, day plans
+demo.sh      replays the simulated timeline; `data-demo/report.html` is the result
+vendor/      datenanfragen.de clone (gitignored) · data/ ledger and replies (gitignored) · drafts/ (gitignored)
 ```
 
-## Tests
-`make test` runs the suite, `make coverage` refreshes `badges/coverage.svg`. Core modules (deadline
-arithmetic, ledger, letters, rendering, analysis, redaction) are at 86–100 % line coverage; the
-thin CLI layer and the HTML report pull the total down. The demo replay test guards the video.
+## Credits and licence
 
-## Licence
-MIT for this code. datenanfragen.de data is CC0.
+Contact data, supervisory-authority list and letter templates: [datenanfragen.de](https://www.datenanfragen.de)
+(CC0). Mail: [himalaya](https://github.com/pimalaya/himalaya). Runtime: [OpenClaw](https://openclaw.ai).
+Model: NVIDIA Nemotron 3 Super. Code in this repository: MIT.
