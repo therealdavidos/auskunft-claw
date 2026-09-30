@@ -121,9 +121,16 @@ def render_complaint(store: DataStore, *, sender: tuple[str, str, str], company_
 
 def render_followup(*, sender: tuple[str, str, str], company_name: str, company_address: str,
                     request_date: date, answer_date: date, tracking_id: str, today: date,
-                    missing: list[str]) -> tuple[str, str]:
-    items = "\n".join(f"- {label(k)} (Art. 15 Abs. 1 lit. {k[0]} DSGVO)" if k[0] in "abcdefgh"
-                      else f"- {label(k)} (Art. 15 Abs. 3 DSGVO)" for k in missing)
+                    missing: list[str], reasons: dict[str, str] | None = None) -> tuple[str, str]:
+    reasons = reasons or {}
+
+    def _line(k: str) -> str:
+        basis = f"Art. 15 Abs. 1 lit. {k[0]} DSGVO" if k[0] in "abcdefgh" and len(k) > 1 and k[1] == "_" \
+            else "Art. 15 Abs. 3 DSGVO"
+        why = f": {reasons[k]}" if reasons.get(k) else ""
+        return f"- {label(k)} ({basis}){why}"
+
+    items = "\n".join(_line(k) for k in missing)
     body = (f"Guten Tag,\n\nvielen Dank für Ihre Antwort vom {answer_date:%d.%m.%Y} auf mein "
             f"Auskunftsersuchen vom {request_date:%d.%m.%Y}.\n\nIhre Auskunft ist leider unvollständig. "
             f"Folgende Angaben, auf die ich nach Art. 15 DSGVO Anspruch habe, fehlen:\n{items}\n\n"

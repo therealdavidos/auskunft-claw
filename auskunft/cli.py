@@ -432,8 +432,10 @@ def check(
             an = (ev.get("payload") or {}).get("analysis") or {}
             if an:
                 from auskunft.analysis import label as _label
-                console.print(f"   completeness {an.get('score')}: "
+                console.print(f"   completeness {an.get('score')} ({an.get('judge', 'heuristic')}): "
                               f"missing {', '.join(_label(k) for k in an.get('missing', [])) or 'nothing'}")
+                if an.get("summary"):
+                    console.print(f"   [dim]{an['summary']}[/dim]")
     if unmatched:
         console.print(f"[dim]{len(unmatched)} other new mails not related to open requests[/dim]")
     if dry_run:
@@ -591,18 +593,19 @@ def followup(
     settings, led = load_settings(), _ledger()
     req = led.get(request_id)
     today = date.fromisoformat(today_str) if today_str else date.today()
-    missing, answer_date = [], today
+    missing, answer_date, reasons = [], today, {}
     for e in led.events(req.id):
         an = (e.get("payload") or {}).get("analysis")
         if an:
             missing, answer_date = an.get("missing", []), date.fromisoformat(e["ts"][:10])
+            reasons = an.get("reasons", {})
     if not missing:
         console.print("[yellow]no recorded gaps for this request[/yellow]")
         raise typer.Exit(code=1)
     name, addr = _company_for(req)
     subject, text = render_followup(sender=_sender_tuple(settings), company_name=name, company_address=addr,
                                     request_date=req.sent_at, answer_date=answer_date,
-                                    tracking_id=req.tracking_id, today=today, missing=missing)
+                                    tracking_id=req.tracking_id, today=today, missing=missing, reasons=reasons)
     _write_letter("followup", req, subject, text, req.to_email, name)
 
 

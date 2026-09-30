@@ -19,6 +19,7 @@ from auskunft.config import Settings
 from auskunft.data import DataStore
 from auskunft.deadline import extended_due_date
 from auskunft.discover import registrable, to_text
+from auskunft.judge import judge
 from auskunft.ledger import Ledger, Request
 from auskunft.mail import himalaya_cmd
 
@@ -162,9 +163,11 @@ def process_reply(settings: Settings, led: Ledger, req: Request, env: dict, text
         state = "answered-partial"
     if state == "answered-partial":
         a = analyse(full_text)
-        payload["analysis"] = {"found": a.found, "missing": a.missing, "score": a.score,
-                               "recipients": a.recipients, "categories": a.categories}
-        if a.complete:
+        from auskunft.redact import redact
+        v = judge(redact(strip_quoted(full_text, settings.from_name), own_name=settings.from_name), a)
+        payload["analysis"] = {**v.as_analysis(), "recipients": a.recipients, "categories": a.categories,
+                               "heuristic_missing": a.missing, "heuristic_score": a.score}
+        if not v.missing:
             state = "answered-full"
     if not dry_run:
         path = out / f"{env.get('id') or 'reply'}.txt"
