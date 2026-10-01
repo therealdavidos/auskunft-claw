@@ -41,7 +41,8 @@ def render(led: Ledger, today: date | None = None, title: str = "Auskunfts-Claw"
     open_states = {"sent", "acknowledged", "clarification", "portal-redirect", "id-requested", "extended",
                    "answered-partial", "overdue", "reminded", "escalated", "complaint-filed"}
     n_open = sum(1 for r in reqs if r.state in open_states)
-    n_done = sum(1 for r in reqs if r.state in ("answered-full", "no-data", "closed"))
+    # a data delivery (download link) is an answer, even though the user still has to fetch it
+    n_done = sum(1 for r in reqs if r.state in ("answered-full", "no-data", "closed", "download-ready"))
     n_over = sum(1 for r in reqs if r.effective_due and days_left(r.effective_due, today) < 0 and r.state in open_states)
     n_you = sum(1 for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused",
                                                "answered-partial", "download-ready"))

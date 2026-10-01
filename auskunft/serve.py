@@ -122,7 +122,27 @@ def ensure_running(data_dir: Path) -> None:
         __import__("time").sleep(0.1)
 
 
+_RELOADABLE = ("auskunft.redact", "auskunft.analysis", "auskunft.deadline", "auskunft.ledger", "auskunft.report")
+_LOADED_MTIME: dict[str, float] = {}
+
+
+def _reload_changed() -> None:
+    """The server runs for days; reload rendering code whose source changed, so the page never goes stale."""
+    import importlib
+
+    for name in _RELOADABLE:
+        mod = sys.modules.get(name) or importlib.import_module(name)
+        try:
+            mtime = Path(mod.__file__).stat().st_mtime
+        except (OSError, TypeError):
+            continue
+        if name in _LOADED_MTIME and mtime > _LOADED_MTIME[name]:
+            importlib.reload(mod)
+        _LOADED_MTIME[name] = mtime
+
+
 def _render(demo: bool) -> bytes:
+    _reload_changed()
     from auskunft.config import load_settings
     from auskunft.ledger import Ledger
     from auskunft.report import render
