@@ -36,3 +36,6 @@ data-demo/
 !.env.example
 coverage.xml
 .coverage
+
+# Office lock files
+~$*
