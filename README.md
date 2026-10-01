@@ -14,7 +14,7 @@ overdue ones, and drafts the complaint to the regulator when the law allows. Out
 grows a map of who holds what about you.
 
 Entry for the **NVIDIA Berlin Claw Agent Challenge** (October 2026). Built on OpenClaw with NVIDIA
-Nemotron 3 Super via [build.nvidia.com](https://build.nvidia.com), mail through OpenClaw's bundled
+Nemotron 3 Ultra via [build.nvidia.com](https://build.nvidia.com), mail through OpenClaw's bundled
 `himalaya` skill, chat through WhatsApp.
 
 ## For the judges: what is real, what is simulated
@@ -115,7 +115,7 @@ Model provider used for the submission: OpenClaw custom provider `nvidia-build` 
 `https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3-super-120b-a12b`. In our OpenClaw
 version (2026.3.13) the built-in NVIDIA provider drops the organisation prefix from model ids; the
 custom provider id works around that. Nemotron 3.5 Lightning ignored tool calls in this setup,
-Nemotron 3 Super follows them reliably.
+Nemotron 3 Super and Ultra follow them reliably; Ultra is the default (faster and more precise on Art. 15 in our side-by-side test).
 
 ## CLI
 
@@ -167,4 +167,4 @@ vendor/      datenanfragen.de clone (gitignored) · data/ ledger and replies (gi
 
 Contact data, supervisory-authority list and letter templates: [datenanfragen.de](https://www.datenanfragen.de)
 (CC0). Mail: [himalaya](https://github.com/pimalaya/himalaya). Runtime: [OpenClaw](https://openclaw.ai).
-Model: NVIDIA Nemotron 3 Super. Code in this repository: MIT.
+Model: NVIDIA Nemotron 3 Ultra. Code in this repository: MIT.

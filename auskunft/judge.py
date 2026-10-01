@@ -42,20 +42,24 @@ Antworte NUR mit JSON in genau dieser Form:
 {"items": {"a_purposes": {"present": bool, "adequate": bool, "quote": str, "reason": str}, ... alle zehn ...},
  "summary": "ein Satz auf Deutsch, was fehlt oder dass die Auskunft vollständig ist"}"""
 
-MODEL = os.environ.get("AUSKUNFT_LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+MODEL = os.environ.get("AUSKUNFT_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
 BASE = os.environ.get("AUSKUNFT_LLM_BASE", "https://integrate.api.nvidia.com/v1")
 
 
 @dataclass
 class Verdict:
-    items: dict[str, dict] = field(default_factory=dict)  # key → {present, adequate, quote, reason, verified}
+    items: dict[str, dict] = field(
+        default_factory=dict
+    )  # key → {present, adequate, quote, reason, verified}
     summary: str = ""
     model: str = ""
     fallback: bool = False
 
     @property
     def missing(self) -> list[str]:
-        return [k for k in ITEMS if k != "third_country" and not self.items.get(k, {}).get("adequate")]
+        return [
+            k for k in ITEMS if k != "third_country" and not self.items.get(k, {}).get("adequate")
+        ]
 
     @property
     def score(self) -> float:
@@ -63,10 +67,16 @@ class Verdict:
         return round(ok / len(ITEMS), 2)
 
     def as_analysis(self) -> dict:
-        return {"found": {k: v.get("quote", "") for k, v in self.items.items() if v.get("adequate")},
-                "missing": self.missing, "score": self.score, "judge": self.model,
-                "reasons": {k: v.get("reason", "") for k, v in self.items.items() if not v.get("adequate")},
-                "summary": self.summary}
+        return {
+            "found": {k: v.get("quote", "") for k, v in self.items.items() if v.get("adequate")},
+            "missing": self.missing,
+            "score": self.score,
+            "judge": self.model,
+            "reasons": {
+                k: v.get("reason", "") for k, v in self.items.items() if not v.get("adequate")
+            },
+            "summary": self.summary,
+        }
 
 
 def available() -> bool:
@@ -76,22 +86,29 @@ def available() -> bool:
 def _chat(text: str, timeout: int = 90) -> dict:
     body = {
         "model": MODEL,
-        "messages": [{"role": "system", "content": RUBRIC},
-                     {"role": "user", "content": f"Antwort des Unternehmens:\n\n{text[:12000]}"}],
+        "messages": [
+            {"role": "system", "content": RUBRIC},
+            {"role": "user", "content": f"Antwort des Unternehmens:\n\n{text[:12000]}"},
+        ],
         "temperature": 0,
         "max_tokens": 1800,
         "response_format": {"type": "json_object"},
         "chat_template_kwargs": {"enable_thinking": False},
     }
     req = urllib.request.Request(
-        f"{BASE}/chat/completions", data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {os.environ['AUSKUNFT_LLM_KEY']}",
-                 "Content-Type": "application/json"}, method="POST")
+        f"{BASE}/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {os.environ['AUSKUNFT_LLM_KEY']}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         data = json.load(resp)
     content = data["choices"][0]["message"]["content"]
     start, end = content.find("{"), content.rfind("}")
-    return json.loads(content[start:end + 1])
+    return json.loads(content[start : end + 1])
 
 
 def _norm(s: str) -> str:
@@ -124,8 +141,13 @@ def judge(text: str, heuristic: Answer | None = None) -> Verdict:
             # the model cited something that is not in the text: distrust this item
             present, adequate = key in heuristic.found, False
             quote = heuristic.found.get(key, "")
-        v.items[key] = {"present": present, "adequate": adequate, "quote": quote[:300],
-                        "reason": str(it.get("reason") or "")[:200], "verified": verified}
+        v.items[key] = {
+            "present": present,
+            "adequate": adequate,
+            "quote": quote[:300],
+            "reason": str(it.get("reason") or "")[:200],
+            "verified": verified,
+        }
     return v
 
 
@@ -133,6 +155,11 @@ def _from_heuristic(h: Answer) -> Verdict:
     v = Verdict(model="heuristic", fallback=True, summary="")
     for key in ITEMS:
         found = key in h.found
-        v.items[key] = {"present": found, "adequate": found, "quote": h.found.get(key, ""),
-                        "reason": "" if found else "nicht gefunden (Heuristik)", "verified": found}
+        v.items[key] = {
+            "present": found,
+            "adequate": found,
+            "quote": h.found.get(key, ""),
+            "reason": "" if found else "nicht gefunden (Heuristik)",
+            "verified": found,
+        }
     return v

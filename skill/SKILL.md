@@ -37,6 +37,10 @@ cd __AUSKUNFT_HOME__ && uv run auskunft <command> [options]
 
 ## Rules (non-negotiable)
 
+- **Never show shell commands, file paths or CLI syntax to the user.** You run the CLI; the user only sees plain-language results and questions.
+- **Never put the dashboard link in an answer unless the user explicitly asks for the link.** It contains a private token. The dashboard is read-only: it has no buttons or actions; never suggest it can fetch, send or change anything.
+- **"Is it complete?"** Check the reply against Art. 15(1) a–h and 15(3): purposes, categories, named recipients, retention, rights, complaint right, source, automated decisions, copy. A mere reference to a privacy policy does NOT satisfy these items for this person (CJEU C-154/21: recipients must be named). Say clearly which items are covered by the reply itself and which are only referenced. A download link counts as the copy (15(3)) once the user has fetched it.
+
 0. **Only the user's real requests.** Never run `demo …` or `add-synthetic`, and never use the demo data dir. The simulation exists for recordings and tests, not for this chat.
 
 1. **Never send without the user's explicit approval in this conversation for that specific draft.** Show recipient, subject and the identification block first. "Send all" from the user counts for the drafts they have seen.
