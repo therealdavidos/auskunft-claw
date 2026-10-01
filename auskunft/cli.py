@@ -973,13 +973,16 @@ def overview(
     over = [r for r in reqs if r.effective_due and days_left(r.effective_due, today) < 0]
     you = [r for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused", "download-ready",
                                           "answered-partial")]
-    summary = {"open": len(reqs), "overdue": len(over), "needs_you": [r.org_name for r in you],
+    answered = ("answered-full", "no-data", "download-ready")  # same rule as the dashboard tiles
+    still_open = [r for r in reqs if r.state not in answered]
+    summary = {"open": len(still_open), "answered": len(reqs) - len(still_open), "overdue": len(over),
+               "needs_you": [r.org_name for r in you],
                "next_due": min((r.effective_due for r in reqs if r.effective_due), default=None)}
     if as_json:
         console.print_json(json.dumps({"url": link, "summary": summary}, default=str, ensure_ascii=False))
         return
     console.print(link)
-    console.print(f"[dim]{summary['open']} offen, {summary['overdue']} überfällig, "
+    console.print(f"[dim]{summary['open']} offen, {summary['answered']} beantwortet, {summary['overdue']} überfällig, "
                   f"{len(you)} brauchen dich; nächste Frist {summary['next_due']}[/dim]")
 
 
