@@ -16,7 +16,7 @@ table{border-collapse:collapse;width:100%;background:#fff;border:1px solid #e3e3
 th,td{padding:8px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:14px}
 th{background:#f0efe9;font-weight:600}.st{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;background:#e8e8e3}
 .st.sent,.st.acknowledged{background:#e6f0ff}.st.overdue,.st.refused{background:#ffe3e3}.st.reminded,.st.escalated,.st.complaint-filed{background:#ffe9c7}
-.st.answered-full,.st.no-data{background:#dff5e1}.st.answered-partial,.st.extended,.st.id-requested,.st.portal-redirect,.st.clarification{background:#fff4cc}
+.st.answered-full,.st.no-data{background:#dff5e1}.st.download-ready{background:#d7ecff;font-weight:600}.st.answered-partial,.st.extended,.st.id-requested,.st.portal-redirect,.st.clarification{background:#fff4cc}
 .days{font-variant-numeric:tabular-nums}.neg{color:#b00020;font-weight:600}.soon{color:#9a6700;font-weight:600}
 .tl{margin:4px 0 0 0;padding-left:18px;color:#444;font-size:13px}.tl li{margin:2px 0}
 .ok{color:#137333}.miss{color:#b00020}.card{background:#fff;border:1px solid #e3e3df;padding:12px 14px;margin:10px 0}
@@ -43,7 +43,8 @@ def render(led: Ledger, today: date | None = None, title: str = "Auskunfts-Claw"
     n_open = sum(1 for r in reqs if r.state in open_states)
     n_done = sum(1 for r in reqs if r.state in ("answered-full", "no-data", "closed"))
     n_over = sum(1 for r in reqs if r.effective_due and days_left(r.effective_due, today) < 0 and r.state in open_states)
-    n_you = sum(1 for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused", "answered-partial"))
+    n_you = sum(1 for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused",
+                                               "answered-partial", "download-ready"))
     upcoming = sorted(r.effective_due for r in reqs if r.effective_due and r.state in open_states
                       and days_left(r.effective_due, today) >= 0)
     nxt = upcoming[0] if upcoming else None

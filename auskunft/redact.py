@@ -9,7 +9,6 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){3,7}(?:[ ]?[A-Z0-9]{1,4})?\b")),
     ("CARD", re.compile(r"\b(?:\d[ -]?){13,19}\b")),
     ("PHONE", re.compile(r"(?<![\w/])(?:\+\d{1,3}[ \-]?\(?\d{2,5}\)?|\(?0\d{2,5}\)?)[ \-/]?\d{3,}(?:[ \-]?\d{2,})*\b")),
-    ("DOB", re.compile(r"\b(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.(?:19|20)\d{2}\b")),
     ("ADDRESS", re.compile(r"\b[A-ZÄÖÜ][\wäöüß.\-]+(?:[ \-][A-ZÄÖÜ]?[\wäöüß.\-]+){0,3}(?:str(?:aße|\.)|weg|platz|allee|gasse|ring|damm|ufer)\s\d{1,4}[a-z]?\b(?:,?\s*\d{5}\s+[A-ZÄÖÜ][\wäöüß\- ]+)?", re.IGNORECASE)),
     ("PLZ", re.compile(r"\b\d{5}\s+[A-ZÄÖÜ][a-zäöüß]+(?:[ \-][A-ZÄÖÜ][a-zäöüß]+)?\b")),
     ("ID", re.compile(r"\b(?:Kunden|Vertrags|Konto|Mitglieds|Versicherten|Steuer|Personalausweis|Ausweis)(?:-?nummer|-?nr\.?|-?ID)\s*:?\s*[A-Z0-9][A-Z0-9\-/ ]{3,25}\b", re.IGNORECASE)),
@@ -17,9 +16,14 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
+# Dates are only masked when labelled as a birth date; other dates (received on, valid until) stay.
+_DOB = re.compile(r"\b(geb(?:oren)?\.?(?:\s+am)?|Geburtsdatum|date of birth|DOB)(\s*:?\s*)"
+                  r"(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.(?:19|20)\d{2}\b", re.IGNORECASE)
+
+
 def redact(text: str, keep_emails_at: tuple[str, ...] = (), own_name: str = "") -> str:
     """Mask PII. Company privacy addresses can be kept via `keep_emails_at` (domains)."""
-    out = text
+    out = _DOB.sub(r"\1\2[DOB]", text)
     for label, pat in _PATTERNS:
         if label == "EMAIL":
             def _mask(m: re.Match[str]) -> str:

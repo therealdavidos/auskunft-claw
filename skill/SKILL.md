@@ -49,6 +49,12 @@ cd __AUSKUNFT_HOME__ && uv run auskunft <command> [options]
 
 **Onboarding:** `discover --known-only --json` → propose 5–10 targets (prefer address brokers and credit agencies: `az-direct`, `schufa`, `crifbuergel`; plus companies with many mails) → for each, `facts` then `draft --polite` → `show` the recipient and ID block → wait for approval → `send`.
 
+**State `download-ready`:** the company has delivered the data as a download link (usually in the mail
+itself, often expiring). Tell the user who delivered, that the data is waiting in their mailbox, and the
+expiry (`download_until` from `replies --json`) – urgently if it is within 3 days. NEVER open, fetch or
+summarise the link or the downloaded data; the data stays with the user. In cron runs, report a new
+`download-ready` item even if nothing else happened.
+
 **`NO_REPLY` is ONLY for scheduled cron runs** (the message starts with `[cron:`). In a conversation with the
 user NEVER reply `NO_REPLY` – always answer, even when nothing is new.
 

@@ -814,7 +814,10 @@ def replies(
             raise typer.Exit(code=1)
     out = []
     for r in reqs:
-        for e in led.events(r.id):
+        evs = led.events(r.id)
+        latest_until = next((e["payload"].get("download_until") for e in reversed(evs)
+                             if e.get("payload") and e["payload"].get("download_until")), None)
+        for e in evs:
             if e["kind"] != "reply:received":
                 continue
             p = e.get("payload") or {}
@@ -831,7 +834,8 @@ def replies(
             out.append({"request_id": r.id, "org": r.org_name, "slug": r.slug, "ref": r.tracking_id,
                         "state_now": r.state, "received": (p.get("date") or e["ts"])[:16],
                         "subject": p.get("subject"), "classified": p.get("classified"),
-                        "attachments": p.get("attachments", []), "excerpt": excerpt})
+                        "attachments": p.get("attachments", []), "excerpt": excerpt,
+                        "download_until": p.get("download_until") or (latest_until if r.state == "download-ready" else None)})
     if as_json:
         console.print_json(json.dumps(out, ensure_ascii=False))
         return
@@ -967,7 +971,7 @@ def overview(
     reqs = led.all(include_closed=False)
     today = date.today()
     over = [r for r in reqs if r.effective_due and days_left(r.effective_due, today) < 0]
-    you = [r for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused",
+    you = [r for r in reqs if r.state in ("id-requested", "portal-redirect", "clarification", "refused", "download-ready",
                                           "answered-partial")]
     summary = {"open": len(reqs), "overdue": len(over), "needs_you": [r.org_name for r in you],
                "next_due": min((r.effective_due for r in reqs if r.effective_due), default=None)}

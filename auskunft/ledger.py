@@ -27,6 +27,7 @@ STATES = (
     "id-requested",
     "clarification",
     "extended",
+    "download-ready",
     "answered-full",
     "answered-partial",
     "no-data",
@@ -39,7 +40,7 @@ STATES = (
 )
 
 OPEN_STATES = {
-    "sent", "acknowledged", "portal-redirect", "id-requested", "clarification", "extended",
+    "sent", "acknowledged", "portal-redirect", "id-requested", "clarification", "extended", "download-ready",
     "answered-partial", "overdue", "reminded", "escalated", "complaint-filed",
 }
 

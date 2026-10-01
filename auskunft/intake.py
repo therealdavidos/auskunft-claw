@@ -48,6 +48,9 @@ RULES: list[tuple[str, tuple[str, ...]]] = [
                  r"no (?:personal )?data (?:about|on|regarding)", r"do not (?:hold|process) any")),
     ("refused", (r"ablehnen", r"nicht nachkommen", r"zur[üu]ckweisen", r"unable to (?:comply|fulfil)",
                  r"cannot (?:comply|fulfil)", r"offensichtlich unbegr[üu]ndet", r"exzessiv")),
+    ("download-ready", (r"(?:daten|data)[^.\n]{0,40}(?:sind|is|are)[^.\n]{0,20}(?:verf[üu]gbar|available)",
+                        r"link ist[^.\n]{0,60}zug[äa]nglich bis", r"herunterladen", r"download (?:your|the) (?:data|file|copy)",
+                        r"available (?:for download|until)", r"download-?link", r"link (?:expires|is valid) ")),
     ("answered-partial", (r"anbei", r"im anhang", r"beigef[üu]gt", r"attached", r"kopie ihrer daten",
                           r"datenauskunft erteilen wir", r"please find (?:your|the) data")),
     ("portal-redirect", (r"portal", r"kundenkonto", r"self-?service", r"onetrust", r"privacy ?center",
@@ -58,8 +61,19 @@ RULES: list[tuple[str, tuple[str, ...]]] = [
 ]
 RANK = {s: i for i, s in enumerate(
     ["sent", "acknowledged", "clarification", "portal-redirect", "extended", "id-requested",
-     "answered-partial", "no-data", "refused", "answered-full"])}
-NEEDS_HUMAN = {"id-requested", "portal-redirect", "clarification", "refused", "answered-partial"}
+     "download-ready", "answered-partial", "no-data", "refused", "answered-full"])}
+NEEDS_HUMAN = {"id-requested", "portal-redirect", "clarification", "refused", "answered-partial", "download-ready"}
+
+_EXPIRY_RE = re.compile(
+    r"(?:zug[äa]nglich|verf[üu]gbar|g[üu]ltig|available|valid|accessible|expires?)[^.\n]{0,30}?(?:bis|until|on|:)\s*:?\s*"
+    r"(\d{1,2}\.?\s?(?:[A-Za-zäÄ]{3,9}\.?|\d{1,2}\.)\s?\d{4}(?:,?\s*\d{1,2}:\d{2}(?::\d{2})?)?(?:\s*\(UTC[+-]\d{2}:\d{2}\))?)",
+    re.IGNORECASE)
+
+
+def download_expiry(text: str) -> str | None:
+    """'3 Oct 2026, 11:47:47 (UTC+02:00)' or '03.10.2026' from a download-link mail, if stated."""
+    m = _EXPIRY_RE.search(text)
+    return m.group(1).strip() if m else None
 
 
 # Where quoted material starts: our own letter's sentences, mail-client quote headers, ticket
@@ -170,7 +184,9 @@ def process_reply(settings: Settings, led: Ledger, req: Request, env: dict, text
                      "date": env.get("date"), "classified": state, "pattern": pat, "source": source,
                      "attachments": [n for n, _ in att_texts]}
     full_text = text + "\n\n" + "\n\n".join(f"--- {n} ---\n{t}" for n, t in att_texts if t)
-    if att_texts and state in ("acknowledged", "answered-partial", "clarification"):
+    if state == "download-ready":
+        payload["download_until"] = download_expiry(text)
+    if att_texts and state in ("acknowledged", "answered-partial", "clarification", "download-ready"):
         state = "answered-partial"
     if state == "answered-partial":
         a = analyse(full_text)
