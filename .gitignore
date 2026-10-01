@@ -39,3 +39,8 @@ coverage.xml
 
 # Office lock files
 ~$*
+
+# screen recordings and the deck that embeds them may show personal data
+pitch/assets/*.mp4
+pitch/assets/*.mov
+pitch/*-video.pptx
