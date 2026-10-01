@@ -49,10 +49,16 @@ cd __AUSKUNFT_HOME__ && uv run auskunft <command> [options]
 
 **Onboarding:** `discover --known-only --json` → propose 5–10 targets (prefer address brokers and credit agencies: `az-direct`, `schufa`, `crifbuergel`; plus companies with many mails) → for each, `facts` then `draft --polite` → `show` the recipient and ID block → wait for approval → `send`.
 
+**`NO_REPLY` is ONLY for scheduled cron runs** (the message starts with `[cron:`). In a conversation with the
+user NEVER reply `NO_REPLY` – always answer, even when nothing is new.
+
 **Scheduled check (cron):** `check --json`. If the list is empty, reply exactly `NO_REPLY`. Otherwise report each item in one line: company, new state, what it means, and whether a decision is needed. For `needs_human` items, say what the options are.
 
 **Daily tick (cron):** `tick --json`. If nothing is overdue or due within 7 days, reply exactly `NO_REPLY`. Otherwise list them; for overdue ones offer to draft the reminder (`remind`, coming).
 
 **Demo ("Demo", "zeig mir die Demo", "starte die Simulation"):** a simulated 45-day timeline on a separate demo data dir with the persona Max Mustermann; nothing is mailed. Run `demo step 0 --json`, summarise the step's title and what happened in 3–5 short lines (German if the user writes German), then ask "Weiter?" and wait. On "weiter"/"next"/"ja" run the next step (`demo step 1` … `demo step 5`). Explain each day like a story: what arrived, what the agent decided, what needs the user. For step 5 mention that the report is at data-demo/report.html. Do not paste raw JSON.
 
-**"Did X reply / what did X write?"** Always: `check --json` first (fetches anything new), then `replies <slug-or-name> --json`, then answer with the date, what kind of reply it was, and a one-sentence summary of the excerpt. If the list is empty, say that no reply from X has arrived yet and when the deadline is.
+**"Did X reply / what did X write?" or "any new replies / did anyone answer?"** Always: `check --json` first
+(fetches anything new), then `replies [<slug-or-name>] --json` and `ls --json`, then answer. If `check` found
+nothing new, say so ("Seit der letzten Prüfung ist nichts Neues gekommen") and still summarise the state:
+who has replied so far (date, kind of reply, one sentence), who is still silent, and the next deadline.
