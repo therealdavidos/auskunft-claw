@@ -1,6 +1,6 @@
 ---
 name: auskunft
-description: Auskunfts-Claw – the user's GDPR Art. 15 data-access project. USE THIS SKILL whenever the user asks about any company replying, answering, writing or responding (e.g. "did Wise reply?", "hat Schufa geantwortet?", "what did Flixbus write?"), about e-mails from companies, request status, deadlines, Fristen, Datenauskunft, DSGVO, "wer hat meine Daten", reminders, complaints, or which companies hold their data. ALSO use it for "Übersicht", "overview", "Dashboard", "wo stehen wir", "Stand", "Link" – that always means the Auskunfts-Claw dashboard (`auskunft overview --json` returns the link), never the OpenClaw gateway UI. ALSO use it whenever the user says "Demo", "zeig mir die Demo", "starte die Demo/Simulation", "show me the demo" – the demo is always the Auskunfts-Claw demo (`auskunft demo step N`), never a tour of the workspace. Never answer such questions from memory or chat history; run the CLI.
+description: Auskunfts-Claw – the user's GDPR Art. 15 data-access project. USE THIS SKILL whenever the user asks about any company replying, answering, writing or responding (e.g. "did Wise reply?", "hat Schufa geantwortet?", "what did Flixbus write?"), about e-mails from companies, request status, deadlines, Fristen, Datenauskunft, DSGVO, "wer hat meine Daten", reminders, complaints, or which companies hold their data. ALSO use it for "Übersicht", "overview", "Dashboard", "wo stehen wir", "Stand", "Link" – that always means the Auskunfts-Claw dashboard (`auskunft overview --json` returns the link), never the OpenClaw gateway UI. Never answer such questions from memory or chat history; run the CLI.
 metadata:
   {
     "openclaw":
@@ -34,9 +34,10 @@ cd __AUSKUNFT_HOME__ && uv run auskunft <command> [options]
 | `replies [<id|slug|name>] --json` | What a company actually wrote: every reply with date, classification, attachments and an excerpt | no |
 | `check [--json]` | Fetch new replies, match to open requests, classify, update ledger. Output marks `needs_human` | no |
 | `tick [--json]` | Daily clock: mark overdue, list deadlines within 7 days | no |
-| `add-synthetic <slug>…` | Demo rows without sending | no |
 
 ## Rules (non-negotiable)
+
+0. **Only the user's real requests.** Never run `demo …` or `add-synthetic`, and never use the demo data dir. The simulation exists for recordings and tests, not for this chat.
 
 1. **Never send without the user's explicit approval in this conversation for that specific draft.** Show recipient, subject and the identification block first. "Send all" from the user counts for the drafts they have seen.
 2. **Never send, attach or store an ID document.** If a company demands one (state `id-requested`), tell the user what the law allows (Art. 12(6): only on justified doubt; a redacted copy at most) and let them decide.
@@ -62,7 +63,6 @@ user NEVER reply `NO_REPLY` – always answer, even when nothing is new.
 
 **Daily tick (cron):** `tick --json`. If nothing is overdue or due within 7 days, reply exactly `NO_REPLY`. Otherwise list them; for overdue ones offer to draft the reminder (`remind`, coming).
 
-**Demo ("Demo", "zeig mir die Demo", "starte die Simulation"):** a simulated 45-day timeline on a separate demo data dir with the persona Max Mustermann; nothing is mailed. Run `demo step 0 --json`, summarise the step's title and what happened in 3–5 short lines (German if the user writes German), then ask "Weiter?" and wait. On "weiter"/"next"/"ja" run the next step (`demo step 1` … `demo step 5`). Explain each day like a story: what arrived, what the agent decided, what needs the user. For step 5 mention that the report is at data-demo/report.html. Do not paste raw JSON.
 
 **"Did X reply / what did X write?" or "any new replies / did anyone answer?"** Always: `check --json` first
 (fetches anything new), then `replies [<slug-or-name>] --json` and `ls --json`, then answer. If `check` found
