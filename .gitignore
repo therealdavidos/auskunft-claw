@@ -41,8 +41,10 @@ coverage.xml
 ~$*
 
 # screen recordings and the deck that embeds them may show personal data
-pitch/assets/*.mp4
-pitch/assets/*.mov
-pitch/*-video.pptx
-pitch/assets/*-poster.png
-pitch/*.mp4
+
+# local-only material: presentation, planning notes, personal logs (kept on disk, not published)
+pitch/
+docs/planning/
+docs/0*-*.md
+docs/archive/
+demo/day1/

@@ -13,29 +13,18 @@ clock per company, reads every reply, judges whether the answer is legally compl
 overdue ones, and drafts the complaint to the regulator when the law allows. Out of the answers
 grows a map of who holds what about you.
 
-Entry for the **NVIDIA Berlin Claw Agent Challenge** (October 2026). Built on OpenClaw with NVIDIA
-Nemotron 3 Ultra via [build.nvidia.com](https://build.nvidia.com), mail through OpenClaw's bundled
-`himalaya` skill, chat through WhatsApp.
+Built on [OpenClaw](https://openclaw.ai) with NVIDIA Nemotron 3 Ultra via
+[build.nvidia.com](https://build.nvidia.com), mail through OpenClaw's bundled `himalaya` skill, chat
+through WhatsApp.
 
-## For the judges: what is real, what is simulated
+## Simulation
 
-**Real, running since 27 Sept 2026.** Five Art. 15 requests went out from the author's own mailbox to
-AZ Direct, Schufa, Flixbus, Bolt and Wise, all targets picked by the agent from the mailbox. Three
-acknowledged within 48 hours; the ledger clocks run to 27 Oct. An OpenClaw cron job checks for replies
-every 30 minutes, a daily job checks deadlines, both on Nemotron, both silent unless something needs
-a human. The user asks on WhatsApp "did Wise reply, what did they write?" and gets the answer.
-
-**Simulated, clearly labelled.** A 30-day statutory period cannot elapse inside a one-week build.
-`./demo.sh` (or "zeig mir die Demo" in chat) replays a 45-day timeline on a separate data directory
-with the persona Max Mustermann: nine reply archetypes as `.eml` fixtures fed through the *real*
-intake, an encrypted ZIP and a PDF unpacked, the model judge flagging an incomplete answer, the
-follow-up letter, day-31 reminders, a day-45 complaint routed to the competent Bavarian authority.
-Nothing is mailed in the demo; letters are logged as sent and marked simulated.
-
-## One-sentence impact
-
-Anyone with an e-mail address can find out which companies hold their data and force complete
-answers, without writing a single letter or tracking a single deadline.
+The statutory period is a month, extensions add two more, so most of the loop only happens weeks after
+a request. `./demo.sh` replays a 45-day timeline on a separate data directory with the persona Max
+Mustermann: nine reply archetypes as `.eml` fixtures fed through the *real* intake, an encrypted ZIP
+and a PDF unpacked, the model judge flagging an incomplete answer, the follow-up letter, day-31
+reminders, and a day-45 complaint routed to the competent authority. Nothing is mailed; letters are
+logged as sent and marked simulated. The same replay runs as an end-to-end test.
 
 ## How it works
 
@@ -91,7 +80,7 @@ uv run auskunft discover --known-only                   # who do you deal with?
 uv run auskunft draft schufa --polite && uv run auskunft show schufa
 uv run auskunft send schufa                             # asks you to type `send`
 uv run auskunft check && uv run auskunft ls             # replies and clocks
-./demo.sh                                               # the simulated 45-day timeline
+./demo.sh                                               # simulated 45-day timeline (separate data dir)
 ```
 
 Optional model judge: put a build.nvidia.com key into `.env` as `AUSKUNFT_LLM_KEY`. Without it the
@@ -111,8 +100,8 @@ openclaw cron add --name auskunft-check --every 30m --session isolated --announc
 openclaw cron add --name auskunft-tick --cron "0 9 * * *" --tz Europe/Berlin --session isolated --announce …
 ```
 
-Model provider used for the submission: OpenClaw custom provider `nvidia-build` pointing at
-`https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3-super-120b-a12b`. In our OpenClaw
+Model provider: OpenClaw custom provider `nvidia-build` pointing at
+`https://integrate.api.nvidia.com/v1` with `nvidia/nemotron-3-ultra-550b-a55b`. In our OpenClaw
 version (2026.3.13) the built-in NVIDIA provider drops the organisation prefix from model ids; the
 custom provider id works around that. Nemotron 3.5 Lightning ignored tool calls in this setup,
 Nemotron 3 Super and Ultra follow them reliably; Ultra is the default (faster and more precise on Art. 15 in our side-by-side test).
@@ -126,9 +115,11 @@ Nemotron 3 Super and Ultra follow them reliably; Ultra is the default (faster an
 | `ls`, `replies`, `map`, `report` | clocks, what companies wrote (redacted), who holds what, HTML report |
 | `check`, `tick` | reply intake and classification; daily deadline check (`--today` for time travel) |
 | `remind`, `escalate`, `followup`, `send-letter` | reminder, Art. 77 complaint, gap follow-up |
-| `purge`, `notify`, `demo` | retention, WhatsApp delivery, simulated timeline steps |
+| `purge`, `notify` | retention, WhatsApp delivery |
+| `overview`, `serve` | dashboard link and the read-only dashboard server |
+| `demo` | simulated timeline on a separate data dir (used by `demo.sh` and the tests) |
 
-## Limitations we want you to know about
+## Limitations
 
 - **No sandbox on macOS.** The OpenClaw `exec` tool runs as the user; the allowlist settings we
   configured are not enforced by this OpenClaw version. The skill instructs the model to run only
@@ -157,8 +148,8 @@ pass for letters to authorities.
 ```
 auskunft/    cli, data loader, renderer, letters, deadline, ledger, intake, analysis, judge, redact, report, demo
 skill/       OpenClaw SKILL.md (installed with `make install-skill`)
-tests/       pytest (43 tests; CI on GitHub Actions)
-docs/        decision record, sketches, feasibility research, day plans
+tests/       pytest (integration tests with a fake mailbox; CI on GitHub Actions)
+docs/        legal research behind the encoded rules, mail setup
 demo.sh      replays the simulated timeline; `data-demo/report.html` is the result
 vendor/      datenanfragen.de clone (gitignored) · data/ ledger and replies (gitignored) · drafts/ (gitignored)
 ```

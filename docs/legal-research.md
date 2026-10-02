@@ -1,4 +1,4 @@
-# Auskunfts-Claw feasibility (1/3): contact data, authorities, legal rules
+# Legal research: contact data, supervisory authorities, Art. 12 and 15 rules
 
 Research date: 2026-09-25 (v2, verified). Read-only fetches of the datenanfragen/data repo (raw files + GitHub API), the datenanfragen/website source, BlnBDI/BfDI sites, EDPB Guidelines 01/2022 v2.0 (PDF, paragraph numbers below), EUR-Lex/CURIA, BAG case notes.
 
